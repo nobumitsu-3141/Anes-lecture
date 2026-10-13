@@ -268,6 +268,8 @@ async function main() {
       q(id, t);
       if (t === '◎') return { text: t, color: C.teal, bold: true, align: 'center' };
       if (t === '−') return { text: t, color: C.gray, align: 'center' };
+      // 「◎（β2 も）」: 記号だけティール太字（他の ◎ とそろえる）
+      if (t.startsWith('◎')) return { text: [[{ text: '◎', color: C.teal, bold: true }, t.slice(1)]], align: 'center' };
       return { text: t, align: 'center' };
     };
     const rows = [
@@ -420,7 +422,7 @@ async function main() {
       mark(q(id, '麻酔薬を減らす（吸入濃度、持続投与）'), ['麻酔薬を減らす', C.blue]),
       [{ text: q(id, '昇圧薬は原因治療までのつなぎ'), color: C.teal, bold: true }],
       mark(q(id, '目安：平均血圧 65 mmHg 以上を保つ'), ['目安：', C.blue], ['65 mmHg 以上', C.teal]),
-    ], { y: 2.0, size: 24, gap: 28 });
+    ], { y: 2.0, size: 24, gap: 32 });
   }
 
   // ===== S9 落とし穴（箇条書き5行） =====
