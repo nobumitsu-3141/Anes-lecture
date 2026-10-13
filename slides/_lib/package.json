@@ -1,0 +1,17 @@
+{
+  "name": "kawazoe-decklib",
+  "version": "1.0.0",
+  "private": true,
+  "description": "川副式スライド書式の .pptx を pptxgenjs で生成するライブラリ（lint 準拠チェック付き）",
+  "main": "decklib.js",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "sample": "node sample_build.js"
+  },
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}
