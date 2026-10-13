@@ -135,7 +135,7 @@ function shrinkTitleBox(deck) {
 
 /** 本文スライド: decklib の slide() に、章チップの上書きと、縮めたタイトル枠・チップ列に対する長さの検査を足す */
 function contentSlide(deck, o) {
-  const s = restyleChips(deck.slide(o));
+  const s = deck.slide(o);   // 章チップ・タイトル枠はライブラリ既定（全講義で共通）
   const right = LAYOUT.title.x + measure(o.title, LAYOUT.title.size);
   const limit = Math.min(LAYOUT.title.x + TITLE_W, CHIP_LEFT - 0.2 / CM);
   if (right > limit + 1e-9) throw new Error(`p${s.page}「${o.title}」: タイトルの推定右端 ${r3(right)}in > 上限 ${r3(limit)}in`);
@@ -146,31 +146,36 @@ function contentSlide(deck, o) {
  * 見出し付きカード（手組み）。項目ごとに間隔をあけ、1 項目を 2 行に割ったときは行間を詰める。
  * items: 文字列 | {lines:[行...], color, bold}（行は文字列 or run 配列）
  * marker: true なら各項目の頭に「•」を置き、本文をぶら下げる。
+ * pad: 上下の内側余白、padX: 左右の内側余白（省略時は pad）。
+ * slots: 項目ごとの枠の高さ（並べたカードどうしで i 番目の項目の高さをそろえる用）。項目は枠の上下中央に置く。
  */
 function cardBody(o) {
   const ts = o.titleSize || 26, bs = o.size || 24;
   const pad = o.pad != null ? o.pad : 0.18;
+  const padX = o.padX != null ? o.padX : pad;
   const tgap = o.titleGap != null ? o.titleGap : 0.14;
   const igap = o.itemGap != null ? o.itemGap : 0.18;
   const items = o.items.map(it => (typeof it === 'string' ? { lines: [it] } : it));
   const hs = items.map(it => heightFor(it.lines.length, bs, 0));
-  const need = 2 * pad + heightFor(1, ts, 0) + tgap + hs.reduce((a, b) => a + b, 0) + igap * (items.length - 1);
-  return { ts, bs, pad, tgap, igap, items, hs, need };
+  const slots = o.slots ? hs.map((h, i) => Math.max(h, o.slots[i])) : hs;
+  const need = 2 * pad + heightFor(1, ts, 0) + tgap + slots.reduce((a, b) => a + b, 0) + igap * (items.length - 1);
+  return { ts, bs, pad, padX, tgap, igap, items, hs, slots, need };
 }
 function listCardH(o) { return Math.ceil(cardBody(o).need * 100) / 100; }
 function listCard(s, o) {
   const b = cardBody(o);
   if (b.need > o.h + 1e-6) throw new Error(`カード「${o.title}」: 高さ不足（必要 ${b.need.toFixed(2)}in > h ${o.h}in）`);
   s.box({ x: o.x, y: o.y, w: o.w, h: o.h, fill: o.fill || C.bg, radius: 0.08, line: o.line });
-  const iw = o.w - 2 * b.pad;
+  const iw = o.w - 2 * b.padX;
   let y = o.y + b.pad;
-  s.text(o.title, { x: o.x + b.pad, y, w: iw, size: b.ts, bold: true, color: o.titleColor || C.dark });
+  s.text(o.title, { x: o.x + b.padX, y, w: iw, size: b.ts, bold: true, color: o.titleColor || C.dark });
   y += heightFor(1, b.ts, 0) + b.tgap;
   const ind = o.marker ? (o.indent || 0.34) : 0;
   b.items.forEach((it, i) => {
-    if (o.marker) s.text('•', { x: o.x + b.pad, y, w: ind, h: heightFor(1, b.bs, 0), size: b.bs, color: C.dark });
-    s.text(it.lines, { x: o.x + b.pad + ind, y, w: iw - ind, h: b.hs[i], size: b.bs, color: it.color || C.dark, bold: !!it.bold });
-    y += b.hs[i] + b.igap;
+    const iy = r2(y + (b.slots[i] - b.hs[i]) / 2);
+    if (o.marker) s.text('•', { x: o.x + b.padX, y: iy, w: ind, h: heightFor(1, b.bs, 0), size: b.bs, color: C.dark });
+    s.text(it.lines, { x: o.x + b.padX + ind, y: iy, w: iw - ind, h: b.hs[i], size: b.bs, color: it.color || C.dark, bold: !!it.bold });
+    y += b.slots[i] + b.igap;
   });
 }
 
@@ -211,8 +216,8 @@ function flowArrow(s, x1, y1, x2, y2, o = {}) {
 }
 
 /**
- * 行の多い表（S4・S5 用）。decklib の s.table と同じ見た目（見出し行 D9D9D9・太字・中央、罫線 BFBFBF 1pt、
- * 上下中央）で、行間だけを固定値 LS pt（= 1.2 em）に詰める。
+ * 行の多い表（S4・S5 用）。decklib の s.table と同じ見た目（見出し行 D9D9D9・太字、罫線 BFBFBF 1pt、
+ * 上下中央）で、行間だけを固定値 LS pt（= 1.2 em）に詰める。見出し行も本文と同じ左揃え（列の頭をそろえる）。
  * s.table は行高を実機メイリオの 1.5 em で取るため、11 行ある表が本文ゾーン（出典 2 行時 1.85〜6.45in）に
  * 入らない。セル幅の検査は decklib と同じ推定器（lint 式、全角 ×1.12）で行い、重なり検査用の登録も同じく行う。
  * cell: 文字列（'\n' で改行）| {text, color, bold, align}
@@ -250,7 +255,7 @@ function tightTable(s, rows, o) {
         })),
         options: {
           fill: head ? { color: C.lightGray } : undefined,
-          align: c.align || (head ? 'center' : 'left'), valign: 'middle',
+          align: c.align || 'left', valign: 'middle',
           fontFace: FONT, fontSize: size, color, bold: bold || undefined,
         },
       };
@@ -271,7 +276,7 @@ function tightTable(s, rows, o) {
 async function main() {
   const deck = new Deck({
     file: OUT,
-    chapters: ['仕組み', '種類', '最大用量', '計算', '限界'],
+    chapters: CHAPTERS,
     author: 'Anes-lecture',
     deckTitle: '3-11 局所麻酔薬',
   });
@@ -286,8 +291,8 @@ async function main() {
 
   // ===== S2 どうやって効くか =====
   {
-    const s = deck.slide({ title: 'どうやって効くか', chapter: 0, notes: notesOf('S2'), sources: sourcesOf('S2') });
-    // --- 図: 横長の膜（灰の帯）に Na チャネル（青の 2 つの箱。間が孔）
+    const s = contentSlide(deck, { title: 'どうやって効くか', chapter: 0, notes: notesOf('S2'), sources: sourcesOf('S2') });
+    // --- 図: 横長の膜（灰の帯＋上端・下端の 2 本線）に Na チャネル（青の 2 つの箱。間が孔）
     const MT = 3.75, MB = 4.45;                 // 膜の上端・下端
     const CH_T = 3.5, CH_B = 4.7;               // チャネルの上端・下端（膜より少し出す）
     const CHL = 3.95, CHW = 0.55, PORE = 0.5;   // 左半分の左端・幅、孔の幅
@@ -297,6 +302,10 @@ async function main() {
     const FR = 6.05;                             // 図の右端
     s.box({ x: X0, y: MT, w: CHL - X0, h: MB - MT, fill: MEMBRANE });
     s.box({ x: CHR, y: MT, w: FR - CHR, h: MB - MT, fill: MEMBRANE });
+    for (const yl of [MT, MB]) {
+      s.hline({ x: X0, y: yl, w: r2(CHL - X0), color: MEMBRANE_LINE, width: 2 });
+      s.hline({ x: CHR, y: yl, w: r2(FR - CHR), color: MEMBRANE_LINE, width: 2 });
+    }
     s.box({ x: CHL, y: CH_T, w: CHW, h: CH_B - CH_T, fill: C.blue, radius: 0.08 });
     s.box({ x: CHL + CHW + PORE, y: CH_T, w: CHW, h: CH_B - CH_T, fill: C.blue, radius: 0.08 });
     // 膜の外の非イオン型（白抜き）→ 膜を通過 → 内側のイオン型（塗り）→ 孔を内側から塞ぐ
@@ -321,28 +330,36 @@ async function main() {
 
   // ===== S3 性質を決める 3 つ =====
   {
-    const s = deck.slide({ title: '性質を決める 3 つ', chapter: 0, notes: notesOf('S3'), sources: sourcesOf('S3') });
+    const s = contentSlide(deck, { title: '性質を決める 3 つ', chapter: 0, notes: notesOf('S3'), sources: sourcesOf('S3') });
     const cw = 3.9, gap = (BW - 3 * cw) / 2;
+    // 3 枚の色分けは枠線（ブルー／バーミリオン／ティール 2.5pt）で示し、見出しは C.dark の太字にする。
+    // ティール 00A8AA の文字は地に対して約 2.6〜2.9:1 で読みにくく、ティールは書式ルールの値をシリーズ共通で使うため。
     const cards = [
-      { title: 'pKa → 発現の速さ', titleColor: C.blue, items: ['低いほど速い', 'リドカイン 7.9', 'ブピバカイン 8.1'] },
+      { title: 'pKa → 発現の速さ', edge: C.blue, items: ['低いほど速い', 'リドカイン 7.9', 'ブピバカイン 8.1'] },
       {
-        title: '脂溶性 → 強さ', titleColor: C.vermilion, items: [
+        title: '脂溶性 → 強さ', edge: C.vermilion, items: [
           '高いほど少量で効く',
           { lines: ['ブピバカインは', 'リドカインの約 4 倍'] },
           { lines: ['中毒も強い'], color: C.red, bold: true },
         ],
       },
-      { title: '蛋白結合 → 持続', titleColor: TEAL_T, items: ['高いほど長い', 'ブピバカイン 約 95%', 'リドカイン 約 65%'] },
+      { title: '蛋白結合 → 持続', edge: C.teal, items: ['高いほど長い', 'ブピバカイン 約 95%', 'リドカイン 約 65%'] },
     ];
-    const common = { titleSize: 26, size: 24, pad: 0.18, titleGap: 0.16, itemGap: 0.22 };
-    const h = Math.max(...cards.map(c => listCardH({ ...common, ...c })));
+    const common = { titleSize: 26, size: 24, pad: 0.18, titleGap: 0.16, itemGap: 0.22, fill: C.white, titleColor: C.dark };
+    // i 番目の項目の枠の高さを 3 枚でそろえる（2 行の項目に合わせ、1 行の項目は枠の上下中央）。
+    // カード 1・3 の下だけが空くのを防ぎ、横に並んだ項目の高さもそろう。
+    const nLines = it => (typeof it === 'string' ? 1 : it.lines.length);
+    const slots = cards[0].items.map((_, i) => heightFor(Math.max(...cards.map(c => nLines(c.items[i]))), common.size, 0));
+    const h = Math.max(...cards.map(c => listCardH({ ...common, ...c, slots })));
     const y = r2((TOP + BOT2 - h) / 2);
-    cards.forEach((c, i) => listCard(s, { ...common, ...c, x: X0 + i * (cw + gap), y, w: cw, h }));
+    cards.forEach((c, i) => listCard(s, {
+      ...common, ...c, slots, line: { color: c.edge, width: 2.5 }, x: r2(X0 + i * (cw + gap)), y, w: cw, h,
+    }));
   }
 
   // ===== S4 種類と作用時間 =====
   {
-    const s = deck.slide({ title: '種類と作用時間', chapter: 1, notes: notesOf('S4'), sources: sourcesOf('S4') });
+    const s = contentSlide(deck, { title: '種類と作用時間', chapter: 1, notes: notesOf('S4'), sources: sourcesOf('S4') });
     const LONG = '3〜8 時間\n（伝達は 12 時間前後）';
     const t = tightTable(s, [
       ['薬', '発現', '持続（目安）', '主な用途'],
@@ -357,7 +374,7 @@ async function main() {
 
   // ===== S5 添付文書の最大用量 =====
   {
-    const s = deck.slide({ title: '添付文書の最大用量', chapter: 2, notes: notesOf('S5'), sources: sourcesOf('S5') });
+    const s = contentSlide(deck, { title: '添付文書の最大用量', chapter: 2, notes: notesOf('S5'), sources: sourcesOf('S5') });
     const dose = text => ({ text, bold: true });
     const t = tightTable(s, [
       ['薬', '添付文書の\n基準最高用量（1 回）', '注記'],
@@ -372,7 +389,7 @@ async function main() {
 
   // ===== S6 体重あたりの目安 =====
   {
-    const s = deck.slide({ title: '体重あたりの目安', chapter: 2, notes: notesOf('S6'), sources: sourcesOf('S6') });
+    const s = contentSlide(deck, { title: '体重あたりの目安', chapter: 2, notes: notesOf('S6'), sources: sourcesOf('S6') });
     const ctr = text => ({ text, align: 'center' });
     const t = s.table([
       ['薬', '教科書の目安（mg/kg）', 'アドレナリン添加'],
@@ -392,30 +409,39 @@ async function main() {
 
   // ===== S7 mg/kg → mL の計算 =====
   {
-    const s = deck.slide({ title: 'mg/kg → mL の計算', chapter: 3, notes: notesOf('S7'), sources: sourcesOf('S7') });
-    // 右: 例のカード 2 枚（上下）
-    const cw = 5.78, cx = XR - cw, ch = 2.31, cgap = 0.26;
-    const card = { titleSize: 24, bodySize: 22, gap: 2, pad: 0.15, titleColor: C.blue };
-    s.card({
-      ...card, x: cx, y: TOP, w: cw, h: ch, title: '60 kg、0.25% ブピバカイン',
-      lines: ['上限 2 mg/kg × 60 = 120 mg', '0.25% = 2.5 mg/mL', ['120 ÷ 2.5 = ', em('48 mL', C.vermilion)]],
-    });
-    s.card({
-      ...card, x: cx, y: TOP + ch + cgap, w: cw, h: ch, title: '50 kg、1% リドカイン',
-      lines: ['体重の目安 3 mg/kg × 50 = 150 mg', ['添付文書 200 mg → ', em('低い方 150 mg', C.dark)], ['1% = 10 mg/mL → ', em('15 mL', C.vermilion)]],
-    });
-    // 左: 換算の式（2 段。上の式で % を mg/mL にしてから下の式へ）
+    const s = contentSlide(deck, { title: 'mg/kg → mL の計算', chapter: 3, notes: notesOf('S7'), sources: sourcesOf('S7') });
+    // 右: 例のカード 2 枚（上下）。左右の内側余白は 0.2in（S3・S9 のカードと同程度）、上下は 0.15in
+    const cw = 5.78, cx = XR - cw, cgap = 0.26;
+    const card = { titleSize: 24, size: 22, pad: 0.15, padX: 0.2, titleGap: 0.07, itemGap: 0.03, titleColor: C.blue };
+    const ex1 = {
+      ...card, title: '60 kg、0.25% ブピバカイン',
+      items: ['上限 2 mg/kg × 60 = 120 mg', '0.25% = 2.5 mg/mL', { lines: [['120 ÷ 2.5 = ', em('48 mL', C.vermilion)]] }],
+    };
+    const ex2 = {
+      ...card, title: '50 kg、1% リドカイン',
+      items: [
+        '体重の目安 3 mg/kg × 50 = 150 mg',
+        { lines: [['添付文書 200 mg → ', em('低い方 150 mg', C.dark)]] },
+        { lines: [['1% = 10 mg/mL → ', em('15 mL', C.vermilion)]] },
+      ],
+    };
+    const ch = Math.max(listCardH(ex1), listCardH(ex2));
+    if (TOP + 2 * ch + cgap > BOT1 + 1e-6) throw new Error(`S7 カードの下端 ${r2(TOP + 2 * ch + cgap)} > ${BOT1}`);
+    listCard(s, { ...ex1, x: cx, y: TOP, w: cw, h: ch });
+    listCard(s, { ...ex2, x: cx, y: r2(TOP + ch + cgap), w: cw, h: ch });
+    // 左: 換算の式（2 段。上の式で % を mg/mL にしてから下の式へ）。26pt で箱の幅に余裕を残す
+    const FS = 26;
     const lw = cx - 0.4 - X0;
     const yc = TOP + (2 * ch + cgap) / 2;
-    const fh = heightFor(1, 28, 0);
-    s.text([['X % = ', em('X × 10 mg/mL', C.blue)]], { x: X0, y: r2(yc - 1.25 - fh / 2), w: lw, size: 28, bold: true, align: 'center' });
+    const fh = heightFor(1, FS, 0);
+    s.text([['X % = ', em('X × 10 mg/mL', C.blue)]], { x: X0, y: r2(yc - 1.25 - fh / 2), w: lw, size: FS, bold: true, align: 'center' });
     flowArrow(s, X0 + lw / 2, r2(yc - 1.25 + fh / 2 + 0.26), X0 + lw / 2, r2(yc + 1.25 - fh / 2 - 0.26));
-    s.text('mL = 上限(mg) ÷ 濃度(mg/mL)', { x: X0, y: r2(yc + 1.25 - fh / 2), w: lw, size: 28, bold: true, align: 'center' });
+    s.text('mL = 上限(mg) ÷ 濃度(mg/mL)', { x: X0, y: r2(yc + 1.25 - fh / 2), w: lw, size: FS, bold: true, align: 'center' });
   }
 
   // ===== S8 用量以下でも中毒は起こる =====
   {
-    const s = deck.slide({ title: '用量以下でも中毒は起こる', chapter: 4, notes: notesOf('S8'), sources: sourcesOf('S8') });
+    const s = contentSlide(deck, { title: '用量以下でも中毒は起こる', chapter: 4, notes: notesOf('S8'), sources: sourcesOf('S8') });
     s.label('吸収が多い順', { x: X0, y: 1.98, w: 2.4, h: 0.46, align: 'left', color: C.source, bold: true });
     // 横フロー（多い → 少ない）。長い語は語の切れ目で 2 行に
     const chips = [
@@ -449,7 +475,7 @@ async function main() {
 
   // ===== S9 アドレナリン添加 =====
   {
-    const s = deck.slide({ title: 'アドレナリン添加', chapter: 4, notes: notesOf('S9'), sources: sourcesOf('S9') });
+    const s = contentSlide(deck, { title: 'アドレナリン添加', chapter: 4, notes: notesOf('S9'), sources: sourcesOf('S9') });
     const gap = 0.4, cw = (BW - gap) / 2;
     const common = { titleSize: 28, size: 22, pad: 0.18, titleGap: 0.14, itemGap: 0.16, marker: true, indent: 0.36 };
     const L = {
@@ -477,7 +503,7 @@ async function main() {
 
   // ===== S10 まとめ =====
   {
-    const s = deck.slide({ title: 'まとめ', chapter: 4, notes: notesOf('S10'), sources: sourcesOf('S10') });
+    const s = contentSlide(deck, { title: 'まとめ', chapter: 4, notes: notesOf('S10'), sources: sourcesOf('S10') });
     const items = [
       'Na チャネルを内側から塞ぐ。炎症の組織では効きにくい',
       'リドカインは速く短い、ブピバカイン系は遅く長い',
@@ -485,9 +511,12 @@ async function main() {
       ['針を持つ前に、', em('上限を mL で計算する', C.vermilion)],
       ['血管内に入れば', em('用量以下でも中毒', C.red), '。吸引・分割・会話'],
     ];
-    const size = 28, gap = 20;
+    // 段落後 26pt で項目の間を少し広げ、枠を本文ゾーン全体（TOP〜BOT1）にして上下中央揃えにする
+    // （行の高さが書体で変わっても、文字の塊が上に寄らない）
+    const size = 28, gap = 26;
     const hh = heightFor(items.length, size, gap);
-    s.bullets(items, { y: r2((TOP + BOT1 - hh) / 2), size, gap });
+    if (hh > BOT1 - TOP + 1e-6) throw new Error(`S10 箇条書きの高さ ${hh} > ${r2(BOT1 - TOP)}`);
+    s.bullets(items, { y: TOP, h: r2(BOT1 - TOP), size, gap, valign: 'middle' });
   }
 
   const res = await deck.save({ render: true, renderDir: RENDER_DIR });

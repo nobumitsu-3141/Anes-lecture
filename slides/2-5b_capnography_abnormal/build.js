@@ -65,7 +65,7 @@ const em = (text, color, bold = true) => ({ text, color, bold });
 const WAVE_W = 3.5;              // 波形の線幅(pt)
 // 強調文字のティール。C.teal(00A8AA) は白地で 2.9:1・F2F2F2 地で 2.6:1 と薄いので、文字には濃いトーンを使う
 // （白地 5.0:1 / F2F2F2 地 4.5:1）。枠線はチップと同じ C.teal のまま。
-const TEAL_TXT = '007C80';
+const TEAL_TXT = C.teal;   // ライブラリ既定（全講義で共通。変えるなら decklib 側で）
 
 /**
  * 右列の箇条書き（手組み）。items: 各項目 = 行の配列（行は文字列 or run 配列）。

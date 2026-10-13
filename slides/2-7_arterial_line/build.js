@@ -80,7 +80,7 @@ const LEAD_C = C.gray;           // 引き出し線
 const LEAD_W = 1.5;
 // 文字用のティール。C.teal(00A8AA) は白地 2.9:1・F2F2F2 地 2.6:1 で投影に弱いので、文字だけ濃くする
 // （白地 5.2:1、F2F2F2 地 4.6:1。図の線・塗りは C.teal のまま）
-const TEAL_T = '007A7D';
+const TEAL_T = C.teal;   // ライブラリ既定（全講義で共通。変えるなら decklib 側で）
 const ARROW_C = '404040';
 
 /**
