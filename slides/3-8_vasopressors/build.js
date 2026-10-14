@@ -195,24 +195,37 @@ function itemCard(s, c, x, y, w, h) {
   });
   if (cy > y + h - pad + 1e-6) throw new Error(`itemCard「${c.title}」: 高さ不足（必要 ${r3(cy + pad - y)}in > ${h}in）`);
 }
-/** 横に並べるカード。各カードの最小幅（最長行）を満たし、余りを均等に配る。高さは共通。 */
-function cardRow(s, cards, o = {}) {
+/**
+ * 3列カードの共通寸法。複数スライドのカード列（S4〜S6）から、列ごとの最小幅の最大値を取り、
+ * 余りを均等に配る。高さも全スライドで共通（最も高いカード）。→ 列の左端と高さがスライド間でそろう。
+ */
+function sharedCardLayout(rows, o = {}) {
   const gap = o.gap != null ? o.gap : GAP;
-  const minW = cards.map(itemCardMinW);
-  const free = BW - gap * (cards.length - 1) - minW.reduce((a, b) => a + b, 0);
-  if (free < -1e-9) throw new Error(`p${s.page}: カード幅が足りません（${r3(-free)}in 不足。最小幅 ${minW.map(r3).join(', ')}）`);
-  const needH = Math.max(...cards.map(itemCardMinH));
-  const h = Math.ceil(needH * 100) / 100;
+  const n = rows[0].length;
+  if (rows.some(r => r.length !== n)) throw new Error('sharedCardLayout: 列数が違います');
+  const minW = Array.from({ length: n }, (_, i) => Math.max(...rows.map(r => itemCardMinW(r[i]))));
+  const free = BW - gap * (n - 1) - minW.reduce((a, b) => a + b, 0);
+  if (free < -1e-9) throw new Error(`カード幅が足りません（${r3(-free)}in 不足。最小幅 ${minW.map(r3).join(', ')}）`);
+  const widths = minW.map(m => r3(m + free / n - 0.0005));
+  const h = Math.ceil(Math.max(...rows.flat().map(itemCardMinH)) * 100) / 100;
+  return { gap, widths, h };
+}
+/** 横に並べるカード。幅と高さは sharedCardLayout の値（全スライド共通）。 */
+function cardRow(s, cards, lay, o = {}) {
+  const { gap, widths, h } = lay;
+  if (cards.length !== widths.length) throw new Error(`p${s.page}: カード数と列数が違います`);
+  cards.forEach((c, i) => {
+    if (itemCardMinW(c) > widths[i] + 1e-9) throw new Error(`p${s.page}: カード「${c.title}」の最小幅 ${r3(itemCardMinW(c))}in > 列幅 ${widths[i]}in`);
+  });
   const y = o.y != null ? o.y : Y0;
   const bottom = bottomOf(s);
   if (y + h > bottom + 1e-9) throw new Error(`p${s.page}: カード下端 ${r3(y + h)}in > 下限 ${bottom}in`);
   let x = X0;
   cards.forEach((c, i) => {
-    const w = minW[i] + free / cards.length;
-    itemCard(s, c, r3(x), y, r3(w), h);
-    x += w + gap;
+    itemCard(s, c, r3(x), y, widths[i], h);
+    x += widths[i] + gap;
   });
-  console.log(`  p${s.page}: cards w=${minW.map((m) => r3(m + free / cards.length)).join('/')} (free ${r3(free)}) h=${h} → bottom ${r3(y + h)}`);
+  console.log(`  p${s.page}: cards w=${widths.join('/')} h=${h} → bottom ${r3(y + h)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -287,102 +300,116 @@ async function main() {
     if (t.y + t.h > bottomOf(s) + 1e-9) throw new Error(`${id}: 表の下端 ${r3(t.y + t.h)}in`);
   }
 
+  // ===== S4〜S6 薬剤ごとの 3列カード =====
+  // 色の基準（S4〜S6・S10 共通）:
+  //   見出し  用量・向く場面 = 青 / 注意 = 赤（危険）。ティールは文字が薄いので見出しに使わない。
+  //   用量    投与量・速度は、添付文書の量も慣用の量も青太字。
+  //   ラベル  「（添付文書外）」「（慣用）」はバーミリオン太字（バーミリオンはこの用途だけ）。
+  //   注意    最重要語は赤太字。
+  const HEAD = { dose: C.blue, scene: C.blue, caution: C.red };
+  const S4_CARDS = (id => [
+    {
+      title: q(id, '用量'), titleColor: HEAD.dose,
+      items: [
+        markIn(brk(id, '添付文書：1 回 0.2 mg 静注（0.1〜0.5 mg）', '（0.1'), '0.2 mg', C.blue),
+        [q(id, '反復は 10〜15 分おき')],
+        markIn(markIn(brk(id, '麻酔中の慣用（添付文書外）：0.1 mg/mL に希釈し 0.05〜0.1 mg ずつ', '（添付', '0.1 mg/mL', '0.05'),
+          '（添付文書外）', C.vermilion), '0.05〜0.1 mg', C.blue),
+      ],
+    },
+    {
+      title: q(id, '向く場面'), titleColor: HEAD.scene,
+      items: [
+        [q(id, '頻脈ぎみの低血圧')],
+        brk(id, '脊麻・麻酔薬による血管拡張', '血管'),
+        brk(id, '心拍数を上げたくない患者', '上げ'),
+      ],
+    },
+    {
+      title: q(id, '注意'), titleColor: HEAD.caution,
+      items: [
+        [[{ text: q(id, '反射性徐脈'), color: C.red, bold: true }]],
+        brk(id, '心機能が悪いと心拍出量が落ちる', '心拍出量'),
+        brk(id, '少量ボーラスの効果は数分、繰り返す', '効果は'),
+      ],
+    },
+  ])('S4');
+  const S5_CARDS = (id => [
+    {
+      title: q(id, '用量'), titleColor: HEAD.dose,
+      items: [
+        markIn(brk(id, '添付文書：麻酔時の血圧降下に 1 回 4〜8 mg 静注', '麻酔時', '1 回'), '4〜8 mg', C.blue),
+        // 数値＋単位を割らず、「10 mL に（4 mg/mL）」をまとめる（Latin の多い行に幅の余裕を残す）
+        markIn(brk(id, '希釈（慣用）：40 mg/1 mL を 10 mL に（4 mg/mL）', '40 mg', '10 mL'), '（慣用）', C.vermilion),
+        [mark(q(id, '1〜2 mL ずつ'), ['1〜2 mL', C.blue])],
+      ],
+    },
+    {
+      title: q(id, '向く場面'), titleColor: HEAD.scene,
+      items: [
+        [q(id, '徐脈ぎみの低血圧')],
+        brk(id, '麻酔導入後の最初の一手', '最初'),
+        brk(id, '心拍数も上げたいとき', '上げ'),
+      ],
+    },
+    {
+      title: q(id, '注意'), titleColor: HEAD.caution,
+      items: [
+        brk(id, '繰り返すと効かなくなる（タキフィラキシー）', '効かなく', '（タキ'),
+        brk(id, '効き始めは少し遅く、長く残る', '長く'),
+        markIn(brk(id, 'カテコールアミン投与中は禁忌', '投与中'), '禁忌', C.red),
+      ],
+    },
+  ])('S5');
+  const S6_CARDS = (id => [
+    {
+      title: q(id, '用量'), titleColor: HEAD.dose,
+      items: [
+        markIn(brk(id, '添付文書：1 mg/250 mL を 0.5〜1.0 mL/分', '0.5〜'), '0.5〜1.0 mL/分', C.blue),
+        markIn(markIn(brk(id, '慣用（添付文書外）：0.03〜0.1 μg/kg/分', '0.03'), '（添付文書外）', C.vermilion),
+          '0.03〜0.1 μg/kg/分', C.blue),
+        markIn(brk(id, '少量ボーラスは施設の方法で（添付文書外）', '施設', '（添付'), '（添付文書外）', C.vermilion),
+      ],
+    },
+    {
+      title: q(id, '向く場面'), titleColor: HEAD.scene,
+      items: [
+        brk(id, '続く低血圧、血管拡張（敗血症など）', '血管', '（敗血'),
+        brk(id, 'ボーラスで追いつかないとき', '追い'),
+        brk(id, '収縮力を落としたくないとき', '落とし'),
+      ],
+    },
+    {
+      title: q(id, '注意'), titleColor: HEAD.caution,
+      items: [
+        // 「血管外漏出」だけを1行目に。条件（かっこ内）は文節の切れ目で2行に
+        markIn(brk(id, '血管外漏出（末梢なら太い近位の静脈・短時間・観察）', '（末梢', '静脈'), '血管外漏出', C.red),
+        brk(id, '過剰で臓器虚血、不整脈', '不整脈'),
+        brk(id, '側管の押し込みで一気に入る', '一気'),
+      ],
+    },
+  ])('S6');
+  const CARD_LAYOUT = sharedCardLayout([S4_CARDS, S5_CARDS, S6_CARDS]);
+
   // ===== S4 フェニレフリン（3列カード） =====
   {
     const id = 'S4';
     const s = deck.slide({ title: 'フェニレフリン', chapter: 1, notes: notesOf(id), sources: sourcesOf(id) });
-    cardRow(s, [
-      {
-        title: q(id, '用量'), titleColor: C.blue,
-        items: [
-          markIn(brk(id, '添付文書：1 回 0.2 mg 静注（0.1〜0.5 mg）', '（0.1'), '1 回 0.2 mg', C.blue),
-          [q(id, '反復は 10〜15 分おき')],
-          markIn(markIn(brk(id, '麻酔中の慣用（添付文書外）：0.1 mg/mL に希釈し 0.05〜0.1 mg ずつ', '（添付', '0.1 mg/mL', '0.05'),
-            '（添付文書外）', C.vermilion), '0.05〜0.1 mg', C.blue),
-        ],
-      },
-      {
-        title: q(id, '向く場面'), titleColor: C.teal,
-        items: [
-          [q(id, '頻脈ぎみの低血圧')],
-          brk(id, '脊麻・麻酔薬による血管拡張', '血管'),
-          brk(id, '心拍数を上げたくない患者', '上げ'),
-        ],
-      },
-      {
-        title: q(id, '注意'), titleColor: C.vermilion,
-        items: [
-          [[{ text: q(id, '反射性徐脈'), color: C.vermilion, bold: true }]],
-          brk(id, '心機能が悪いと心拍出量が落ちる', '心拍出量'),
-          brk(id, '少量ボーラスの効果は数分、繰り返す', '効果は'),
-        ],
-      },
-    ]);
+    cardRow(s, S4_CARDS, CARD_LAYOUT);
   }
 
   // ===== S5 エフェドリン（3列カード） =====
   {
     const id = 'S5';
     const s = deck.slide({ title: 'エフェドリン', chapter: 2, notes: notesOf(id), sources: sourcesOf(id) });
-    cardRow(s, [
-      {
-        title: q(id, '用量'), titleColor: C.blue,
-        items: [
-          markIn(brk(id, '添付文書：麻酔時の血圧降下に 1 回 4〜8 mg 静注', '麻酔時', '1 回'), '4〜8 mg', C.blue),
-          brk(id, '希釈（慣用）：40 mg/1 mL を 10 mL に（4 mg/mL）', '40 mg', '（4 mg'),
-          [q(id, '1〜2 mL ずつ')],
-        ],
-      },
-      {
-        title: q(id, '向く場面'), titleColor: C.teal,
-        items: [
-          [q(id, '徐脈ぎみの低血圧')],
-          brk(id, '麻酔導入後の最初の一手', '最初'),
-          [q(id, '心拍数も上げたいとき')],
-        ],
-      },
-      {
-        title: q(id, '注意'), titleColor: C.vermilion,
-        items: [
-          brk(id, '繰り返すと効かなくなる（タキフィラキシー）', '効かなく', '（タキ'),
-          brk(id, '効き始めは少し遅く、長く残る', '長く'),
-          markIn(brk(id, 'カテコールアミン投与中は禁忌', '投与中'), '禁忌', C.red),
-        ],
-      },
-    ]);
+    cardRow(s, S5_CARDS, CARD_LAYOUT);
   }
 
   // ===== S6 ノルアドレナリン（3列カード） =====
   {
     const id = 'S6';
     const s = deck.slide({ title: 'ノルアドレナリン', chapter: 3, notes: notesOf(id), sources: sourcesOf(id) });
-    cardRow(s, [
-      {
-        title: q(id, '用量'), titleColor: C.blue,
-        items: [
-          brk(id, '添付文書：1 mg/250 mL を 0.5〜1.0 mL/分', '0.5〜'),
-          markIn(markIn(brk(id, '慣用（添付文書外）：0.03〜0.1 μg/kg/分', '0.03'), '（添付文書外）', C.vermilion),
-            '0.03〜0.1 μg/kg/分', C.blue),
-          markIn(brk(id, '少量ボーラスは施設の方法で（添付文書外）', '施設', '（添付'), '（添付文書外）', C.vermilion),
-        ],
-      },
-      {
-        title: q(id, '向く場面'), titleColor: C.teal,
-        items: [
-          brk(id, '続く低血圧、血管拡張（敗血症など）', '血管', '（敗血'),
-          brk(id, 'ボーラスで追いつかないとき', '追い'),
-          brk(id, '収縮力を落としたくないとき', '落とし'),
-        ],
-      },
-      {
-        title: q(id, '注意'), titleColor: C.vermilion,
-        items: [
-          markIn(brk(id, '血管外漏出（末梢なら太い近位の静脈・短時間・観察）', '太い', '短時間'), '血管外漏出', C.red),
-          brk(id, '過剰で臓器虚血、不整脈', '不整脈'),
-          brk(id, '側管の押し込みで一気に入る', '一気'),
-        ],
-      },
-    ]);
+    cardRow(s, S6_CARDS, CARD_LAYOUT);
   }
 
   // ===== S7 使い分け（表 3列・5行） =====
@@ -420,9 +447,11 @@ async function main() {
       mark(q(id, '原因を探す：出血、深い麻酔、体位、圧迫、気胸、アナフィラキシー'), ['原因を探す：', C.blue]),
       mark(q(id, '前負荷を戻す：輸液、下肢挙上、圧迫の解除'), ['前負荷を戻す：', C.blue]),
       mark(q(id, '麻酔薬を減らす（吸入濃度、持続投与）'), ['麻酔薬を減らす', C.blue]),
-      [{ text: q(id, '昇圧薬は原因治療までのつなぎ'), color: C.teal, bold: true }],
-      mark(q(id, '目安：平均血圧 65 mmHg 以上を保つ'), ['目安：', C.blue], ['65 mmHg 以上', C.teal]),
-    ], { y: 2.0, size: 24, gap: 32 });
+      // 強調は青に統一（ティールは白地で約 2.9:1 と薄い。1行に近い2色を混ぜない）
+      [{ text: q(id, '昇圧薬は原因治療までのつなぎ'), color: C.blue, bold: true }],
+      mark(q(id, '目安：平均血圧 65 mmHg 以上を保つ'), ['目安：', C.blue], ['65 mmHg 以上', C.blue]),
+    // 1行目が全角 31 字あり、28pt では1行に収まらないため 24pt のまま。本文域の縦中央に置く
+    ], { y: Y0, h: r3(bottomOf(s) - Y0), valign: 'middle', size: 24, gap: 32 });
   }
 
   // ===== S9 落とし穴（箇条書き5行） =====
@@ -435,7 +464,7 @@ async function main() {
       mark(q(id, 'ノルアドレナリンのラインを押し込んで急上昇'), ['急上昇', C.red]),
       mark(q(id, '希釈を間違えて 10 倍量（mg と μg）'), ['10 倍量', C.red]),
       mark(q(id, '昇圧薬で血圧だけ戻して、出血に気づかない'), ['出血に気づかない', C.red]),
-    ], { y: 2.0, size: 28, gap: 26 });
+    ], { y: Y0, h: r3(bottomOf(s) - Y0), valign: 'middle', size: 28, gap: 30 });
   }
 
   // ===== S10 まとめ（箇条書き5行） =====
@@ -445,10 +474,11 @@ async function main() {
     s.bullets([
       q(id, '血圧 ≈ 心拍出量 × 体血管抵抗。4 要素のどれが足りないか'),
       mark(q(id, '徐脈ぎみ → エフェドリン 4〜8 mg'), ['エフェドリン 4〜8 mg', C.blue]),
-      mark(q(id, '頻脈ぎみ → フェニレフリン 0.05〜0.1 mg ずつ（慣用）'), ['フェニレフリン 0.05〜0.1 mg ずつ', C.blue]),
+      // 添付文書外の慣用量は「（慣用）」をバーミリオンにして、添付文書の量（エフェドリン 4〜8 mg）と区別する
+      mark(q(id, '頻脈ぎみ → フェニレフリン 0.05〜0.1 mg ずつ（慣用）'), ['フェニレフリン 0.05〜0.1 mg ずつ', C.blue], ['（慣用）', C.vermilion]),
       mark(q(id, '続く低血圧 → ノルアドレナリン持続'), ['ノルアドレナリン持続', C.blue]),
-      mark(q(id, '昇圧薬はつなぎ。原因（出血・麻酔深度・前負荷）を探す'), ['昇圧薬はつなぎ。', C.teal]),
-    ], { y: 2.0, size: 28, gap: 24 });
+      mark(q(id, '昇圧薬はつなぎ。原因（出血・麻酔深度・前負荷）を探す'), ['昇圧薬はつなぎ。', C.blue]),
+    ], { y: Y0, h: r3(bottomOf(s) - Y0), valign: 'middle', size: 28, gap: 30 });
   }
 
   for (const [id, ls] of Object.entries(SOURCE_SPLITS)) console.log(`  ${id} 出典の改行位置: 「${ls[0]}」⏎「${ls[1]}」`);

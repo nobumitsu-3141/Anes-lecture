@@ -6,6 +6,20 @@
  * 内容（構成・文言・ノート・出典）の正本は同じディレクトリの spec.md。
  * スライド面の文言はここに転記（改行位置のみ調整。spec にない文字列は Error）、ノートと出典は spec.md から読み込む。
  * render（PDF/JPG）はリポジトリの外に出す: DECK_RENDER_DIR（未指定なら OS の一時ディレクトリ）。
+ *
+ * deviations（spec の表記から変えたところ。すべて出典行。16pt・2 行に ' / ' の境目で割るため）:
+ *   S4  Proost JH, et al. Br J Anaesth 2000;85:717-723 → Proost et al. Br J Anaesth 2000;85:717-723
+ *       Stöhr T, et al. Br J Anaesth 2021;127:415-423 → Stöhr et al. Br J Anaesth 2021;127:415-423
+ *   S5  Hughes MA, et al. Anesthesiology 1992;76:334-341 → Hughes 1992 Anesthesiology 76:334-341
+ *       Kapila A, et al. Anesthesiology 1995;83:968-975 → Kapila 1995 Anesthesiology 83:968-975
+ *   S7  Panhuizen IF, et al. Br J Anaesth 2015;114:777-784 → Panhuizen et al. Br J Anaesth 2015;114:777-784
+ *       Morse JD, et al. J Clin Med 2022;11:3009 → Morse et al. J Clin Med 2022;11:3009
+ *   S8  Horrow JC, et al. BMC Anesthesiol 2021;21:62 → Horrow et al. BMC Anesthesiol 2021;21:62
+ *       Ingrande J, et al. Anesth Analg 2011;113:57-62 → Ingrande et al. Anesth Analg 2011;113:57-62
+ *       項目の順: 日本麻酔科学会 / Horrow / Ingrande / 各薬剤の添付文書
+ *              → 日本麻酔科学会 / 各薬剤の添付文書（1 行目） ・ Horrow / Ingrande（2 行目）
+ *   （スライド面の本文・図の文言は spec のまま。S4 カード1 の「プロポフォール、ミダゾラム、」「レミマゾラム」は
+ *     改行位置だけ変えて 1 行にした。）
  */
 const fs = require('fs');
 const os = require('os');
@@ -91,24 +105,50 @@ function runs(line, ...parts) {
   return parts.map(p => (typeof p === 'string' ? { text: p } : p));
 }
 
+/** 出典。spec の ' / ' 区切りの項目のまま（ライブラリが項目の境目で詰めて最大2行に）。 */
+function sourcesOf(id) {
+  const s = SPEC[id] && SPEC[id].sources;
+  return s ? s.split(' / ') : undefined;
+}
+
 /**
- * 出典。既定は ' / ' 区切りの項目（ライブラリが詰めて最大2行に）。
- * breakAfter を渡すと、その文字列の直後の空白で2行に割る（文言は変えない）。
- * text を渡すと spec の代わりにその文字列を使う（表記の調整。deviations に記載）。
+ * 出典の短縮表記（deviations）。spec の出典を 16pt・11.6in の 2 行に「' / ' の境目で」割ると、
+ * どの割り方でも 1 行が幅を超えるスライド（S4, S5, S7, S8）だけ、著者表記を最小限に縮める。
+ * 雑誌名・年・巻・頁の数値は変えない。
+ *   S4, S7, S8: 著者のイニシャルを省く（「Proost JH, et al.」→「Proost et al.」）。
+ *   S5: イニシャルだけでは 1 行目が 0.44in 超過するため、1 行目の 2 件を「著者 年 雑誌 巻:頁」の形にする
+ *       （QA の例示の形。et al. と イニシャルを省き、年を前に出す。数値はそのまま）。
  */
-function sourcesOf(id, breakAfter, text) {
-  const s = text || (SPEC[id] && SPEC[id].sources);
-  if (!s) return undefined;
-  if (!breakAfter) return s.split(' / ');
-  const k = s.indexOf(breakAfter);
-  if (k < 0) throw new Error(`${id} 出典: 改行位置「${breakAfter}」が見つかりません`);
-  const e = k + breakAfter.length;
-  if (s[e] !== ' ') throw new Error(`${id} 出典: 改行位置の直後が空白ではありません`);
-  let l1 = s.slice(0, e), l2 = s.slice(e + 1);
-  if (l2.startsWith('/ ')) l2 = l2.slice(2);
+const SRC_ABBR = {
+  'Proost JH, et al. Br J Anaesth 2000;85:717-723': 'Proost et al. Br J Anaesth 2000;85:717-723',
+  'Stöhr T, et al. Br J Anaesth 2021;127:415-423': 'Stöhr et al. Br J Anaesth 2021;127:415-423',
+  'Hughes MA, et al. Anesthesiology 1992;76:334-341': 'Hughes 1992 Anesthesiology 76:334-341',
+  'Kapila A, et al. Anesthesiology 1995;83:968-975': 'Kapila 1995 Anesthesiology 83:968-975',
+  'Panhuizen IF, et al. Br J Anaesth 2015;114:777-784': 'Panhuizen et al. Br J Anaesth 2015;114:777-784',
+  'Morse JD, et al. J Clin Med 2022;11:3009': 'Morse et al. J Clin Med 2022;11:3009',
+  'Horrow JC, et al. BMC Anesthesiol 2021;21:62': 'Horrow et al. BMC Anesthesiol 2021;21:62',
+  'Ingrande J, et al. Anesth Analg 2011;113:57-62': 'Ingrande et al. Anesth Analg 2011;113:57-62',
+};
+/**
+ * 出典を ' / ' の境目で 2 行に割る。lines = [[項目, ...], [項目, ...]]（項目は spec の表記で書く）。
+ * spec の項目を過不足なく 1 回ずつ使っていること、各行が 16pt・11.6in に収まることを確認する。
+ * short=true の項目は SRC_ABBR の短縮表記に置き換える。
+ */
+function sourceLines(id, lines, short = []) {
+  const specItems = SPEC[id].sources.split(' / ');
+  const used = lines.flat();
+  const a = [...specItems].sort().join('\n'), b = [...used].sort().join('\n');
+  if (a !== b) throw new Error(`${id} 出典: spec の項目と一致しません\n  spec: ${specItems.join(' | ')}\n  used: ${used.join(' | ')}`);
   const S = LAYOUT.source;
-  if (!fits(l1, S.size, S.w) || !fits(l2, S.size, S.w)) throw new Error(`${id} 出典: 2行に収まりません\n  ${l1}\n  ${l2}`);
-  return [l1, l2];
+  return lines.map(l => {
+    const str = l.map(it => {
+      if (!short.includes(it)) return it;
+      if (!SRC_ABBR[it]) throw new Error(`${id} 出典: 短縮表記が未登録「${it}」`);
+      return SRC_ABBR[it];
+    }).join(' / ');
+    if (!fits(str, S.size, S.w)) throw new Error(`${id} 出典: 1 行に収まりません「${str}」`);
+    return str;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -307,28 +347,34 @@ async function main() {
   // ===== S4 消失：代謝と排泄（2×2 のカード） =====
   {
     const id = 'S4';
+    const J = '日本麻酔科学会「麻酔薬および麻酔関連薬使用ガイドライン 第4版」（2025）';
+    const P = 'Proost JH, et al. Br J Anaesth 2000;85:717-723', St = 'Stöhr T, et al. Br J Anaesth 2021;127:415-423';
     const s = deck.slide({
       title: '消失：代謝と排泄', chapter: 2, notes: notesOf(id),
-      sources: sourcesOf(id, 'Proost JH, et al.'),
+      sources: sourceLines(id, [[J], [P, St]], [P, St]),
     });
-    const gx = 0.25, gy = 0.25;
-    const cw = (XR - X0 - gx) / 2;
-    const h1 = 2.32, h2 = BOT2 - (YT + h1 + gy);
+    // 2×2。カード1 の薬剤名 2 行（「プロポフォール、ミダゾラム、」「レミマゾラム」）を 1 行にまとめ（改行位置のみ変更）、
+    // 4 枚とも本文 2 行・同じ高さにそろえる。左列は 1 行 20 字が入る幅、右列は最長 13 字が入る幅。
+    // 見出しは 4 枚とも同じ色（ブルー）。
+    const gx = 0.25, gy = 0.3;
+    const cwL = 7.15, cwR = r3(XR - X0 - gx - cwL);
+    const ch = 2.05;
+    const y0 = YT, y1 = r3(YT + ch + gy);
     const cards = [
-      { title: q(id, '肝臓で代謝'), titleColor: C.blue,
-        lines: [q(id, 'プロポフォール、ミダゾラム、'), q(id, 'レミマゾラム'), q(id, '肝血流・肝機能で変わる')] },
-      { title: q(id, '血液・組織の酵素'), titleColor: C.teal,
+      { title: q(id, '肝臓で代謝'),
+        lines: [q(id, 'プロポフォール、ミダゾラム、') + q(id, 'レミマゾラム'), q(id, '肝血流・肝機能で変わる')] },
+      { title: q(id, '血液・組織の酵素'),
         lines: [q(id, 'レミフェンタニル'), q(id, '臓器の機能によらない')] },
-      { title: q(id, '腎臓から排泄'), titleColor: C.vermilion,
+      { title: q(id, '腎臓から排泄'),
         lines: [q(id, 'モルヒネ：活性代謝物がたまる'), q(id, 'ロクロニウム：一部は尿へ')] },
-      { title: q(id, '肺から排泄'), titleColor: C.blue,
+      { title: q(id, '肺から排泄'),
         lines: [q(id, '吸入麻酔薬'), q(id, '換気量と溶けやすさで決まる')] },
     ];
     cards.forEach((c, i) => {
       const col = i % 2, row = Math.floor(i / 2);
       s.card({
-        x: r3(X0 + col * (cw + gx)), y: r3(row === 0 ? YT : YT + h1 + gy), w: r3(cw), h: r3(row === 0 ? h1 : h2),
-        gap: 0, ...c,
+        x: r3(col === 0 ? X0 : X0 + cwL + gx), y: row === 0 ? y0 : y1, w: col === 0 ? cwL : cwR, h: ch,
+        titleColor: C.blue, gap: 8, ...c,
       });
     });
   }
@@ -336,16 +382,19 @@ async function main() {
   // ===== S5 持続投与の切れ方（左: context-sensitive half-time の模式図 / 右: 箇条書き3行） =====
   {
     const id = 'S5';
+    const H = 'Hughes MA, et al. Anesthesiology 1992;76:334-341', K = 'Kapila A, et al. Anesthesiology 1995;83:968-975';
+    const Sa = 'Sahinovic MM, et al. Clin Pharmacokinet 2018;57:1539-1558';
     const s = deck.slide({
       title: '持続投与の切れ方', chapter: 3, notes: notesOf(id),
-      sources: sourcesOf(id, 'Kapila A, et al. Anesthesiology'),
+      sources: sourceLines(id, [[H, K], [Sa]], [H, K]),
     });
-    const ax0 = 1.0, ay0 = 5.6, axTop = 2.5;
+    // 縦軸の上端は軸名（y1.85、下端 約2.28）から 0.4in 以上あける
+    const ax0 = 1.0, ay0 = 5.6, axTop = 2.7;
     const xs = ax0 + 0.04, xe = 4.45, Tmax = 8;
     const axR = xe + 0.2;
     const X = t => xs + (xe - xs) * t / Tmax;
     // 縦: 模式図（目盛りなし）。3 本の順序と形を保ったまま、低い 2 本の終点のラベルが重ならないよう 0.8 乗で圧縮
-    const base = 0.22, span = 2.7, cmin = 3.5, cmax = CSHT.fentanyl(Tmax);
+    const base = 0.22, span = 2.55, cmin = 3.5, cmax = CSHT.fentanyl(Tmax);
     const Y = c => ay0 - (base + span * Math.pow(Math.max(0, c - cmin) / (cmax - cmin), 0.8));
     const curve = key => {
       const pts = [];
@@ -360,14 +409,14 @@ async function main() {
       { key: 'remi', color: C.teal, label: 'レミフェンタニル' },
     ];
     series.forEach(sr => s.polyline(curve(sr.key), { color: sr.color, width: 3.5 }));
-    // ラベル（図の右端の外。各曲線の終点の高さ）
-    const lx = axR + 0.15;
+    // ラベル（図の右端の外。各曲線の終点の高さ。横軸の矢じりの先から 0.3in あける。太字）
+    const lx = axR + 0.3;
     series.forEach(sr => {
       const yEnd = Y(CSHT[sr.key](Tmax));
-      s.text(fig(id, sr.label), { x: r3(lx), y: r3(yEnd - L22 / 2), w: 2.8, h: L22, size: 22, bold: true, color: sr.color });
+      s.text(fig(id, sr.label), { x: r3(lx), y: r3(yEnd - L22 / 2), w: 2.75, h: L22, size: 22, bold: true, color: sr.color });
     });
     // 軸の名前（図の外）
-    s.text(q(id, '半分になるまでの時間'), { x: X0, y: 1.92, w: 3.6, h: L22, size: 22 });
+    s.text(q(id, '半分になるまでの時間'), { x: X0, y: YT, w: 3.6, h: L22, size: 22 });
     s.text(q(id, '持続投与した時間'), { x: r3(axR - 3.0), y: ay0 + 0.2, w: 3.0, h: L22, size: 22, align: 'right' });
     // --- 箇条書き（右） ---
     const b2 = brk(id, 'レミフェンタニルは何時間入れても数分で切れる', '何時間');
@@ -379,7 +428,7 @@ async function main() {
     ];
     const igap = 0.45, bx = 7.85;
     const bh = bulletBlockHeight(items, 22, igap);
-    const mid = (1.92 + ay0 + 0.2 + L22) / 2;
+    const mid = (YT + ay0 + 0.2 + L22) / 2;
     bulletBlock(s, items, { x: bx, y: r3(mid - bh / 2), w: XR - bx, size: 22, igap });
   }
 
@@ -387,31 +436,37 @@ async function main() {
   {
     const id = 'S6';
     const s = deck.slide({ title: '用量反応と相乗作用', chapter: 3, notes: notesOf(id), sources: sourcesOf(id) });
-    const ax0 = 1.6, ay0 = 5.75, axTop = 3.0, axR = 7.0;
+    // 縦軸は ED50/ED95 のラベル（右端 x1.48）から 0.27in あける
+    const ax0 = 1.75, ay0 = 5.75, axTop = 3.0, axR = 7.0;
     const xs = ax0 + 0.04, xe = 6.8;
     const y100 = 3.3;
+    // 曲線の 0% の高さは横軸から 0.045in 上（線の太さぶん。裾が横軸に重なって軸を上書きしないように）
+    const y0 = ay0 - 0.045;
     const X = u => xs + (xe - xs) * u;               // u: 0〜1（用量、模式）
-    const Y = p => ay0 - (ay0 - y100) * p;           // p: 0〜1（効く人の割合）
+    const Y = p => y0 - (y0 - y100) * p;             // p: 0〜1（効く人の割合）
     const sig = (u, c) => 1 / (1 + Math.exp(-(u - c) / 0.055));
     const cB = 0.64, cV = 0.36;                       // 鎮静薬だけ（右）/ オピオイド併用（左に移動）
     // 50% と 95% の横の点線
     for (const p of [0.5, 0.95]) s.hline({ x: ax0, y: r3(Y(p)), w: r3(xe - ax0), color: AXIS_C, width: 1.75, dash: 'dash' });
-    axis(s, ax0, ay0, ax0, axTop);
-    axis(s, ax0, ay0, axR, ay0);
-    const curve = c => {
+    // 2 本が同じ高さで重なる区間（青の左の裾、朱の右の平坦部）は描かない:
+    // 朱は u 0〜0.8（終点で 99.97%、そこでの青は 95%）、青は u 0.2〜1（始点で 0.03%、そこでの朱は 5%）。重なる区間がなくなる
+    const curve = (c, u0, u1) => {
       const pts = [];
-      for (let k = 0; k <= 120; k++) { const u = k / 120; pts.push([r3(X(u)), r3(Y(sig(u, c)))]); }
+      for (let k = 0; k <= 120; k++) { const u = u0 + (u1 - u0) * k / 120; pts.push([r3(X(u)), r3(Y(sig(u, c)))]); }
       return pts;
     };
-    s.polyline(curve(cB), { color: C.blue, width: 3.5 });
-    s.polyline(curve(cV), { color: C.vermilion, width: 3.5 });
+    s.polyline(curve(cB, 0.2, 1), { color: C.blue, width: 3.5 });
+    s.polyline(curve(cV, 0, 0.8), { color: C.vermilion, width: 3.5 });
+    // 軸は曲線より手前に描く
+    axis(s, ax0, ay0, ax0, axTop);
+    axis(s, ax0, ay0, axR, ay0);
     // 左への移動（25% の高さで、青の曲線から朱の曲線へ）
     const p25 = 0.25, du = 0.055 * Math.log(p25 / (1 - p25));
     polyArrow(s, [[X(cB + du) - 0.15, Y(p25)], [X(cV + du) + 0.15, Y(p25)]], { color: C.vermilion, width: 3 });
-    // ED50 / ED95（縦軸の外、点線の高さ）
-    const tw = 0.95;
-    s.label(q(id, 'ED95'), { x: r3(ax0 - 0.12 - tw), y: r3(Y(0.95) - L22 / 2), w: tw, h: L22, align: 'right', bold: true });
-    s.label(q(id, 'ED50'), { x: r3(ax0 - 0.12 - tw), y: r3(Y(0.5) - L22 / 2), w: tw, h: L22, align: 'right', bold: true });
+    // ED50 / ED95（縦軸の外、点線の高さ。右端 x1.48）
+    const tw = 0.95, lr = 1.48;
+    s.label(q(id, 'ED95'), { x: r3(lr - tw), y: r3(Y(0.95) - L22 / 2), w: tw, h: L22, align: 'right', bold: true });
+    s.label(q(id, 'ED50'), { x: r3(lr - tw), y: r3(Y(0.5) - L22 / 2), w: tw, h: L22, align: 'right', bold: true });
     // 軸の名前（図の外）
     s.text(fig(id, '効く人の割合'), { x: X0, y: 1.95, w: 2.4, h: L22, size: 22 });
     s.text(fig(id, '用量'), { x: axR - 1.2, y: ay0 + 0.15, w: 1.2, h: L22, size: 22, align: 'right' });
@@ -435,9 +490,11 @@ async function main() {
   // ===== S7 患者による違い（表 3列 × 6行＋見出し行） =====
   {
     const id = 'S7';
+    const J = '日本麻酔科学会「麻酔薬および麻酔関連薬使用ガイドライン 第4版」（2025）';
+    const Pa = 'Panhuizen IF, et al. Br J Anaesth 2015;114:777-784', M = 'Morse JD, et al. J Clin Med 2022;11:3009';
     const s = deck.slide({
       title: '患者による違い', chapter: 4, notes: notesOf(id),
-      sources: sourcesOf(id, 'Panhuizen IF,'),
+      sources: sourceLines(id, [[J], [Pa, M]], [Pa, M]),
     });
     const c = str => q(id, str);
     const b = str => ({ text: q(id, str), bold: true });
@@ -451,19 +508,20 @@ async function main() {
       [b('小児（乳幼児）'), brk(id, '分布容積大、代謝が速い（新生児は未熟で遅い）', '（新生児').join('\n'),
         brk(id, 'mg/kg は多め、間隔は短め', '間隔').join('\n')],
     ];
-    s.table(rows, { x: X0, y: YT, colW: [2.6, 5.85, 3.78], size: 22, margin: [2, 6, 2, 6] });
+    // 見出し行も本文と同じ左揃え。列幅は推定器で 2 列目の最長行（16 字）が 1 行に入る最小に近い値
+    s.table(rows, { x: X0, y: YT, colW: [2.6, 5.85, 3.78], size: 22, margin: [2, 6, 2, 6], headAlign: 'left' });
   }
 
   // ===== S8 体重の使い分け（表 2列 × 4行＋見出し行、下に一行の注意） =====
   {
     const id = 'S8';
-    // 出典: spec の 4 件は 16pt・2 行（11.6in×2）にどの空白で割っても収まらない（最良の割り方で 1 行目が 0.09in 超過）。
-    // 全角の丸括弧「（2025）」を半角「(2025)」にして 2 行に収める（文言は同じ）。
-    const src = SPEC[id].sources.replace('（2025）', '(2025)');
-    if (src === SPEC[id].sources) throw new Error('S8 出典の表記調整に失敗');
+    // 出典: spec の順のまま ' / ' の境目で割ると、どの割り方でも 1 行が 11.6in を超える。
+    // 和文の 2 件（学会ガイドライン・添付文書）を 1 行目、論文 2 件を 2 行目に並べ替え、論文の著者のイニシャルを省く。
+    const J = '日本麻酔科学会「麻酔薬および麻酔関連薬使用ガイドライン 第4版」（2025）', T = '各薬剤の添付文書';
+    const Ho = 'Horrow JC, et al. BMC Anesthesiol 2021;21:62', In = 'Ingrande J, et al. Anesth Analg 2011;113:57-62';
     const s = deck.slide({
       title: '体重の使い分け', chapter: 4, notes: notesOf(id),
-      sources: sourcesOf(id, 'Horrow JC, et al. BMC', src),
+      sources: sourceLines(id, [[J, T], [Ho, In]], [Ho, In]),
     });
     const c = str => q(id, str);
     const b = str => ({ text: q(id, str), bold: true });
@@ -474,7 +532,7 @@ async function main() {
       [b('除脂肪体重'), c('プロポフォール導入、レミフェンタニル')],
       [{ text: brk(id, '補正体重（理想＋超過分の一部）', '（理想').join('\n'), bold: true }, c('施設の方式に従う')],
     ];
-    const t = s.table(rows, { x: X0, y: YT, colW: [4.6, 7.63], size: 24 });
+    const t = s.table(rows, { x: X0, y: YT, colW: [4.6, 7.63], size: 24, headAlign: 'left' });
     const ny = r3(t.y + t.h + 0.32);
     s.box({
       x: X0, y: ny, w: XR - X0, h: r3(BOT2 - ny), fill: C.bg, radius: 0.08, margin: 0.2,
@@ -486,12 +544,14 @@ async function main() {
   {
     const id = 'S9';
     const s = deck.slide({ title: '現場での使い方', chapter: 4, notes: notesOf(id), sources: sourcesOf(id) });
+    // 各行の要点語を太字＋バーミリオン（文言は spec のまま。runs が連結結果を照合）
+    const V = t => em(t, C.vermilion);
     const items = [
-      q(id, '入れたら、効果のピークまで待つ'),
-      q(id, '反応を見て、少量ずつ追加する'),
-      q(id, '持続投与は、切れ方を考えて止める時刻を決める'),
-      q(id, '高齢者・循環不全は、減らして（目安 半量）ゆっくり'),
-      q(id, '併用するなら、それぞれの量を減らす'),
+      runs(q(id, '入れたら、効果のピークまで待つ'), '入れたら、効果の', V('ピーク'), 'まで待つ'),
+      runs(q(id, '反応を見て、少量ずつ追加する'), '反応を見て、', V('少量ずつ'), '追加する'),
+      runs(q(id, '持続投与は、切れ方を考えて止める時刻を決める'), '持続投与は、切れ方を考えて', V('止める時刻'), 'を決める'),
+      runs(q(id, '高齢者・循環不全は、減らして（目安 半量）ゆっくり'), '高齢者・循環不全は、減らして（目安 ', V('半量'), '）ゆっくり'),
+      runs(q(id, '併用するなら、それぞれの量を減らす'), '併用するなら、それぞれの量を', V('減らす')),
     ];
     const gapPt = 24, h = heightFor(5, 28, gapPt);
     s.bullets(items, { x: X0, y: r3(YT + (BOT2 - YT - h) / 2), w: 12.2, size: 28, gap: gapPt });
@@ -501,12 +561,14 @@ async function main() {
   {
     const id = 'S10';
     const s = deck.slide({ title: 'まとめ', chapter: 4, notes: notesOf(id), sources: sourcesOf(id) });
+    // 各行のキーワードを太字＋バーミリオン（文言は spec のまま）
+    const V = t => em(t, C.vermilion);
     const items = [
-      q(id, '効くのは効果部位の濃度。静注から効果まで数分の遅れ'),
-      q(id, '単回静注は主に再分布で切れ、繰り返すと蓄積する'),
-      q(id, '持続投与の切れ方は、入れた時間で変わる'),
-      q(id, '鎮静薬とオピオイドは相乗。併用で量を減らす'),
-      q(id, '高齢・肥満・腎肝・循環不全で、量と速さを変える'),
+      runs(q(id, '効くのは効果部位の濃度。静注から効果まで数分の遅れ'), '効くのは', V('効果部位'), 'の濃度。静注から効果まで数分の遅れ'),
+      runs(q(id, '単回静注は主に再分布で切れ、繰り返すと蓄積する'), '単回静注は主に', V('再分布'), 'で切れ、繰り返すと蓄積する'),
+      runs(q(id, '持続投与の切れ方は、入れた時間で変わる'), '持続投与の切れ方は、', V('入れた時間'), 'で変わる'),
+      runs(q(id, '鎮静薬とオピオイドは相乗。併用で量を減らす'), '鎮静薬とオピオイドは', V('相乗'), '。併用で量を減らす'),
+      runs(q(id, '高齢・肥満・腎肝・循環不全で、量と速さを変える'), '高齢・肥満・腎肝・循環不全で、', V('量と速さ'), 'を変える'),
     ];
     const gapPt = 24, h = heightFor(5, 28, gapPt);
     s.bullets(items, { x: X0, y: r3(YT + (BOT2 - YT - h) / 2), w: 12.2, size: 28, gap: gapPt });

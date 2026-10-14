@@ -12,6 +12,11 @@
  *   - ノートは spec.md から実行時に読み込む（原文のまま全文。【要確認】もノートには残す）。
  *   - 出典は spec の sources 行を ' / ' で項目に分けて渡す（2行への折り返しはライブラリ）。
  *     1項目で1行（16pt・全角46字）に入らないもの（S2）は、語の切れ目で2行に分けて渡す（文言は同じ）。
+ * spec からのずれ（deviations）:
+ *   - S4 出典: 「ASA Task Force on Neuraxial Opioids, et al. Anesthesiology」→「ASA Task Force on Neuraxial Opioids. Anesthesiology」
+ *     （3 件が 16pt・2 行に入らないため。理由の計算は S4 の箇所）。
+ *   - S8 layout: 「右に各段の一言」は、spec に一言の文言が段2・3の括弧書きしか無いため採らず、
+ *     括弧書きを箱の中に入れた中央寄せの縦フローにした（文言は spec のまま）。
  * render（PDF/JPG）はリポジトリの外に出す: RENDER_DIR / DECK_RENDER_DIR（未指定なら OS の一時ディレクトリ）。
  */
 const fs = require('fs');
@@ -97,7 +102,14 @@ function sourcesOf(id, split = {}, replace = null) {
 // 書き写しの検査: スライドに置いた文字列（置いた順）を記録し、spec の「」と突き合わせる
 // ---------------------------------------------------------------------------
 const PLACED = {};
-const textOf = line => (Array.isArray(line) ? line.map(r => (typeof r === 'string' ? r : r.text)).join('') : String(line));
+/** 行は文字列か run 配列。字下げを足す行は {line, dx}（dx: 追加の字下げ in） */
+const isDx = l => l != null && !Array.isArray(l) && typeof l === 'object' && 'line' in l;
+const lineOf = l => (isDx(l) ? l.line : l);
+const dxOf = l => (isDx(l) ? (l.dx || 0) : 0);
+const textOf = line => {
+  const l = lineOf(line);
+  return Array.isArray(l) ? l.map(r => (typeof r === 'string' ? r : r.text)).join('') : String(l);
+};
 function rec(id, line) { (PLACED[id] = PLACED[id] || []).push(textOf(line)); }
 function checkOnSlide() {
   for (const [id, sp] of Object.entries(SPEC)) {
@@ -151,7 +163,7 @@ function itemCardNeedW(o) {
   const ts = o.titleSize, bs = o.bodySize;
   let need = measure(textOf(o.title), ts);
   for (const lines of o.items) {
-    lines.forEach((l, k) => { need = Math.max(need, measure(textOf(l), bs) + (k ? o.indent : 0)); });
+    lines.forEach((l, k) => { need = Math.max(need, measure(textOf(l), bs) + (k ? o.indent + dxOf(l) : 0)); });
   }
   return need + 2 * o.pad + 0.001;
 }
@@ -178,16 +190,25 @@ function itemCard(s, id, o) {
     rec(id, lines[0]);
     if (lines.length > 1) {
       const rest = lines.slice(1);
-      s.text(rest, { x: x + pad + indent, y: cy + lh, w: iw - indent, h: heightFor(rest.length, bs, 0), size: bs, color: C.dark });
-      rest.forEach(l => rec(id, l));
+      if (rest.some(l => dxOf(l))) {
+        // 行ごとに字下げが違う（全角の開き括弧の後に揃える等）ときは1行ずつ置く（行送りは lh）
+        rest.forEach((l, k) => {
+          const dx = indent + dxOf(l);
+          s.text([lineOf(l)], { x: x + pad + dx, y: cy + lh * (k + 1), w: iw - dx, h: lh, size: bs, color: C.dark });
+          rec(id, l);
+        });
+      } else {
+        s.text(rest, { x: x + pad + indent, y: cy + lh, w: iw - indent, h: heightFor(rest.length, bs, 0), size: bs, color: C.dark });
+        rest.forEach(l => rec(id, l));
+      }
     }
     cy += itemH[k] + (k < n - 1 ? g : 0);
   });
   return { gap: g, used: cy - y + padY };
 }
 
-/** 3列カードの共通寸法（本文 22pt。項目の2行目以降は 0.3in 字下げ） */
-const CARD3 = { pad: 0.14, padY: 0.16, titleSize: 24, bodySize: 22, titleGap: 0.16, indent: 0.3, minGap: 0.08, maxGap: 0.34 };
+/** 3列カードの共通寸法（本文 22pt。左右の内側余白 0.18in。項目の2行目以降は 0.26in 字下げ） */
+const CARD3 = { pad: 0.18, padY: 0.16, titleSize: 24, bodySize: 22, titleGap: 0.16, indent: 0.26, minGap: 0.08, maxGap: 0.34 };
 
 /**
  * 3列カード。列幅は中身の最長行から決め、余りは狭い列から順に配る（水位合わせ）。
@@ -259,15 +280,16 @@ async function main() {
       ['拮抗薬は', '少量ずつ'],
       ['切れるまで', '観察'],
     ];
-    const ag = 0.85, cw = (BW - 3 * ag) / 4, chh = 1.5, ins = 0.2;
+    // チップ幅 2.3in（28pt・全角5字＝2.18in が内側余白 0.06in で入る）。矢印は前後に 0.24in 空けて太く
+    const cw = 2.3, ag = (BW - 4 * cw) / 3, chh = 1.5, ins = GAP;
     const keyH = 1.1, between = 0.75;
     const y1 = TOP + (BOTTOM - TOP - (chh + between + keyH)) / 2;
     steps.forEach((lines, i) => {
       const x = X0 + i * (cw + ag);
-      chip(s, id, lines, { x, y: y1, w: cw, h: chh, size: 28 });
+      chip(s, id, lines, { x, y: y1, w: cw, h: chh, size: 28, margin: 0.06 });
       if (i < steps.length - 1) {
         const yc = y1 + chh / 2;
-        s.arrow({ x1: x + cw + ins, y1: yc, x2: x + cw + ag - ins, y2: yc, color: ARROW, width: 3 });
+        s.arrow({ x1: x + cw + ins, y1: yc, x2: x + cw + ag - ins, y2: yc, color: ARROW, width: 4.5 });
       }
     });
     keyBox(s, id, ['拮抗薬は作動薬より', em('早く切れる', C.vermilion)],
@@ -311,6 +333,8 @@ async function main() {
     const id = 'S4';
     // 出典: spec の 3 件（全角換算 94.9 字）は 16pt・2 行（11.6in×2 = 93.2 字）にどこで割っても収まらない。
     // ASA の項の「, et al」を落とし（団体著者名だけにする）、「Anesthesiology」の後で2行に割る。
+    //   各項目は 17.4 / 39.1 / 36.1 字で、どの2項目も1行（46.6 字）に並ばない（添付文書＋学会指針 = 54.7 字）。
+    //   学会指針の行に残る幅は 9.3 字だけなので、ASA の項を割れるのは年・巻・頁（8.4 字）の前だけ。
     const s = contentSlide(deck, id, 1, { 'ASA Task Force': '2016;124' },
       [['ASA Task Force on Neuraxial Opioids, et al. Anesthesiology', 'ASA Task Force on Neuraxial Opioids. Anesthesiology']]);
     const lw = 6.3, rw = BW - GAP - lw;
@@ -318,7 +342,8 @@ async function main() {
     const L = itemCard(s, id, {
       ...geo, x: X0, w: lw, title: '使う', titleColor: C.blue,
       items: [
-        ['呼吸数が少ない', ['（', b('8〜10 回/分未満'), 'など。'], '施設基準で）'],
+        // 3行目は2行目の「（」の後（「8」の位置）に揃える: 全角1字 = 本文 24pt の 1em
+        ['呼吸数が少ない', ['（', b('8〜10 回/分未満'), 'など。'], { line: '施設基準で）', dx: 24 / 72 }],
         ['刺激しても呼吸が増えない'],
         ['SpO2 が下がり、換気で支えている'],
       ],
@@ -341,9 +366,10 @@ async function main() {
       {
         title: '用量（添付文書）', titleColor: C.blue,
         items: [
+          // 半角英数の多い行（「0.1 mg、総量 1 mg まで」）は実機メイリオで幅が出るので、短い行に分ける
           [['初回 ', b('0.2 mg'), ' を'], '緩徐に静注'],
-          [[b('4 分'), '以内に'], '覚醒なければ', [b('0.1 mg'), ' 追加']],
-          [['以後 ', b('1 分'), '間隔で'], [b('0.1 mg'), '、総量 ', b('1 mg'), ' まで']],
+          [[b('4 分'), '以内に覚醒なければ'], [b('0.1 mg'), ' 追加']],
+          [['以後 ', b('1 分'), '間隔で'], [b('0.1 mg'), '、'], ['総量 ', b('1 mg'), ' まで']],
         ],
       },
       {
@@ -406,11 +432,13 @@ async function main() {
     if (by + bh > BOTTOM + 1e-6) throw new Error(`S7: 箇条書きが出典に近すぎます（下端 ${(by + bh).toFixed(2)}in）`);
   }
 
-  // ===== S8 手順（縦フロー 5 段＋右に各段の一言） =====
+  // ===== S8 手順（縦フロー 5 段） =====
   {
     const id = 'S8';
     const s = contentSlide(deck, id, 4);
-    // 各段: [チップの文言, 右の一言（spec の括弧書き。無い段は null）]
+    // spec の layout は「右に各段の一言」だが、on-slide に一言の文言があるのは段2・3の括弧書きだけ。
+    // 右列が2段分しか埋まらず左に偏るので、括弧書きは箱の中（本文の後ろ・ブルー）に戻し、
+    // 5段を同じ幅の箱にしてスライド中央に置く（矢印も中央）。
     const rows = [
       ['気道を開け、酸素、必要なら換気', null],
       ['原因を並べる', '（薬・筋弛緩・CO2・体温・糖）'],
@@ -418,23 +446,18 @@ async function main() {
       ['呼吸数・反応を再評価', null],
       ['作動薬が切れるまで観察し、申し送る', null],
     ];
-    const cw = 6.75, chh = 0.56, vg = 0.38, size = 24;
-    const y0 = 1.86;
-    const rx = X0 + cw + 0.36, rw = LAYOUT.body.right - rx;
+    const size = 26, chh = 0.56, cw = 9.4, m = 0.2;
+    const n = rows.length;
+    const bottom = s.sourceTop - GAP;
+    const vg = (bottom - TOP - n * chh) / (n - 1);   // 段の間隔（矢印の入る隙間）
+    const cx = X0 + (BW - cw) / 2, ax = X0 + BW / 2, ains = 0.06;
+    if (vg < 0.36) throw new Error(`S8: 段の間隔 ${vg.toFixed(2)}in が狭すぎます`);
     rows.forEach(([main, side], i) => {
-      const y = y0 + i * (chh + vg);
-      chip(s, id, [main], { x: X0, y, w: cw, h: chh, size, align: 'left', margin: 0.18 });
-      if (side) {
-        s.text([side], { x: rx, y: y + (chh - heightFor(1, 22, 0)) / 2, w: rw, h: heightFor(1, 22, 0), size: 22, color: C.blue, bold: true });
-        rec(id, side);
-      }
-      if (i < rows.length - 1) {
-        const ax = X0 + 0.6;
-        s.arrow({ x1: ax, y1: y + chh + 0.05, x2: ax, y2: y + chh + vg - 0.05, color: ARROW, width: 3 });
-      }
+      const y = TOP + i * (chh + vg);
+      const line = side ? [main, { text: side, color: C.blue }] : main;
+      chip(s, id, [line], { x: cx, y, w: cw, h: chh, size, margin: m });
+      if (i < n - 1) s.arrow({ x1: ax, y1: y + chh + ains, x2: ax, y2: y + chh + vg - ains, color: ARROW, width: 4.5 });
     });
-    const last = y0 + rows.length * chh + (rows.length - 1) * vg;
-    if (last > BOTTOM + 0.02) throw new Error(`S8: フローが出典に近すぎます（下端 ${last.toFixed(2)}in）`);
   }
 
   // ===== S9 まとめ（箇条書き5行） =====
