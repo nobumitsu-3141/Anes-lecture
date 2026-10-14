@@ -683,12 +683,18 @@ class Deck {
     this.opts = o;
     if (this.chapters.length > 6) throw new Error('[decklib] chapters は最大 6 個です');
     if (this.chapters.length === 1) warn('chapters が1個です（章チップは 2〜6 個を想定）');
+    // 4 字（全角）の行があるデッキは、角丸の内接分で PowerPoint が折り返さないよう 10.5pt・角丸 0.05in にする
+    // （roundRect の文字領域は角丸 r × (1−1/√2) ずつ内側に入る。11pt × 4 字 = 44pt は 0.68in・r0.1 の文字領域 44.7pt にほぼ等しい）
+    const wide = this.chapters.some(lab => lab.split('\n').some(l => units(l) >= 3.5));
+    this.chipSize = wide ? 10.5 : LAYOUT.chip.size;
+    this.chipRadius = wide ? 0.05 : LAYOUT.chip.radius;
     this.chapters.forEach(lab => {
       const ls = lab.split('\n');
       if (ls.length > 2) throw new Error(`[decklib] 章ラベル「${lab}」: 2行まで`);
       ls.forEach(l => {
-        // チップ 0.68in 幅・11pt・余白0 → 実寸で全角 4 字まで（4.27 単位）
-        if (units(l) * LAYOUT.chip.size > LAYOUT.chip.w * 72 - 2) {
+        // チップ 0.68in 幅・余白0 → 文字領域（角丸の内接分を引く）に全角 4 字まで
+        const inner = (LAYOUT.chip.w - 2 * this.chipRadius * (1 - Math.SQRT1_2)) * 72;
+        if (units(l) * this.chipSize > inner) {
           throw new Error(`[decklib] 章ラベル「${lab}」: チップ1行は全角4字まで（${units(l).toFixed(2)}字）。` +
             '5字以上は語の切れ目に "\\n" を入れて2行にしてください（例: "まとめ\\n確認"）。');
         }
@@ -814,13 +820,13 @@ class Deck {
         slide.addText(ls.map((l, li) => ({
           text: l,
           options: {
-            fontFace: FONT, lang: LANG, fontSize: ch.size, color: cur ? C.white : C.chipText,
+            fontFace: FONT, lang: LANG, fontSize: this.chipSize, color: cur ? C.white : C.chipText,
             bold: cur || undefined, breakLine: li < ls.length - 1 || undefined,
           },
         })), {
-          shape: 'roundRect', x: r3(x), y: ch.y, w: ch.w, h: ch.h, rectRadius: ch.radius,
+          shape: 'roundRect', x: r3(x), y: ch.y, w: ch.w, h: ch.h, rectRadius: this.chipRadius,
           fill: { color: cur ? C.teal : C.lightGray },
-          fontFace: FONT, lang: LANG, fontSize: ch.size, align: 'center', valign: 'middle', margin: 0,
+          fontFace: FONT, lang: LANG, fontSize: this.chipSize, align: 'center', valign: 'middle', margin: 0, wrap: false,
         });
         x += ch.w + ch.gap;
       });

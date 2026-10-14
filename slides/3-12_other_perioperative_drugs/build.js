@@ -265,7 +265,7 @@ async function main() {
     deckTitle: '3-12 周術期のその他の薬',
   });
   const NCH = 4;
-  const slide = o => tuneChips(deck.slide(o), NCH);
+  const slide = o => deck.slide(o);   // 章チップはライブラリ既定（4 字ラベルの調整も decklib 側）
 
   // ===== S1 表紙 =====
   {
