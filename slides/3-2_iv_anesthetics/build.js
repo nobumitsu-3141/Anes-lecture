@@ -12,6 +12,13 @@
  *   - ノートは spec.md から実行時に読み込む（原文のまま全文。【要確認】もノートには残す）。
  *   - 出典は spec の sources 行を ' / ' で項目に分けて渡す（2行への折り返しはライブラリ）。
  * render（PDF/JPG）はリポジトリの外に出す: RENDER_DIR / DECK_RENDER_DIR（未指定なら OS の一時ディレクトリ）。
+ *
+ * この講義だけの上書き（decklib の既定はほかの講義と共通なので触らない）:
+ *   - 章チップ: 12pt・折り返しなし・幅 0.75in・右端を本文の右端 12.78in に・タイトルの行の高さの中央に置く。
+ *     現在章の地は濃いティール 007C80（白太字で約 5:1）。
+ *   - タイトル枠: チップ列の左端の手前で止める（既定の 9.3in 幅だとチップ列に重なる）。
+ *   - 出典とページ番号: 下端を 7.20in にそろえる（スライド下端から 0.30in）。出典枠の幅は 11.4in（入る範囲で）。
+ *   書き出し前の pptxgenjs のスライドオブジェクトを直接書き換える（3-11・2-8 の restyleChips と同じ方法）。
  */
 const fs = require('fs');
 const os = require('os');
@@ -105,11 +112,113 @@ const SRC2_TOP = LAYOUT.source.y2; // 出典2行のときの出典枠の上端 6
 const b = t => ({ text: t, bold: true });                       // 数値の強調（太字）
 const danger = t => ({ text: t, bold: true, color: C.red });    // 禁忌（レッド）
 const drug = t => ({ text: t, bold: true });                     // まとめの薬剤名（色を付けると行頭記号の色も変わるので太字だけ）
+const r2 = v => Math.round(v * 100) / 100;
+const r3 = v => Math.round(v * 1000) / 1000;
+const CM = 2.54;
 
-/** 本文スライド（spec のタイトル・ノート・出典をそのまま渡す） */
+// ---------------------------------------------------------------------------
+// 章チップ・タイトル枠・出典・ページ番号（この講義だけの上書き）
+// ---------------------------------------------------------------------------
+const CHAPTERS = ['共通', 'プロポ\nフォール', 'レミマ\nゾラム', 'ミダ・\nケタ', '使い分け'];
+
+/**
+ * 章チップ。decklib は 11pt・0.68×0.64in・上端 0.06in・右端 13.13in で置き、
+ * 「フォール」（4 字）が実機でも描画でも折り返して 3 行になる。
+ * - 文字 12pt（slide_lint の小サイズ許容は 10.5/12/16pt）。bodyPr を wrap="none" にして、ラベルの改行（spec の 2 行）だけで組む。
+ * - 幅 0.75in・間隔 0.04in。右端は本文の右端 12.78in。左端は 8.87in。
+ *   一番長いタイトル（S2「静脈麻酔薬に共通すること」、lint 推定の右端 8.76in）から lint の最小間隔 0.2cm 以上あく
+ *   （チップを 0.80in にすると左端が 8.62in になり、lint の TITLEパンくず侵入になる）。
+ * - 上端 0.50in: チップ列の上下の中央（0.82in）をタイトル枠の上下の中央（0.825in）にそろえる。下端 1.14in は金下線の上 0.3in。
+ * - 現在章の地は濃いティール 007C80（白太字 12pt で約 5.0:1。C.teal 00A8AA だと約 2.9:1）。
+ * lint のパンくず判定（上端 < 1.9cm・高さ < 1.9cm・幅 < 2.2cm・左 > 17cm）の範囲に収める。
+ */
+const CHIP = { pt: 12, w: 0.75, h: 0.64, y: 0.5, gap: 0.04, right: LAYOUT.body.right, radius: 0.08, cur: '007C80' };
+const CHIP_LEFT = r3(CHIP.right - CHAPTERS.length * CHIP.w - (CHAPTERS.length - 1) * CHIP.gap);
+/** タイトル枠の幅。チップ列の左端の 0.05in 手前で止める（lint の TITLE2行化を避けるため、S2 の推定幅 8.21in 以上は要る） */
+const TITLE_W = r2(CHIP_LEFT - 0.05 - LAYOUT.title.x);
+
+function restyleChips(s) {
+  const ch = LAYOUT.chip;
+  const chips = s.raw._slideObjects.filter(o => o._type === 'text' && o.options && o.options.shape === 'roundRect'
+    && Math.abs(o.options.y - ch.y) < 1e-6 && Math.abs(o.options.h - ch.h) < 1e-6);
+  if (chips.length !== CHAPTERS.length) throw new Error(`p${s.page}: 章チップが見つかりません（${chips.length} 個）`);
+  const cur = chips.filter(o => o.options.fill && String(o.options.fill.color).toUpperCase() === C.teal);
+  if (cur.length !== 1) throw new Error(`p${s.page}: 現在章のチップが 1 個ではありません（${cur.length} 個）`);
+  const inner = CHIP.w - 2 * CHIP.radius * 0.29289;   // 角丸の文字領域（角の丸みぶん内側）
+  let x = CHIP_LEFT;
+  chips.forEach((o, k) => {
+    const ls = CHAPTERS[k].split('\n');
+    // 実寸（メイリオ全角 = 1em）で文字領域に入ること（折り返しはしない設定だが、箱からはみ出さないことを確かめる）
+    ls.forEach(l => {
+      const realW = [...l].length * CHIP.pt / 72;
+      if (realW > inner) throw new Error(`章チップ「${l}」が ${CHIP.pt}pt・幅 ${CHIP.w}in に収まりません（${r3(realW)} > ${r3(inner)}in）`);
+    });
+    if (ls.length * CHIP.pt * 1.5 / 72 > CHIP.h - 0.05) throw new Error(`章チップ「${CHAPTERS[k]}」が高さ ${CHIP.h}in に収まりません`);
+    o.options.x = r3(x);
+    o.options.y = CHIP.y;
+    o.options.w = CHIP.w;
+    o.options.h = CHIP.h;
+    o.options.rectRadius = CHIP.radius;
+    o.options.fontSize = CHIP.pt;
+    o.options._bodyProp = { ...(o.options._bodyProp || {}), wrap: false };
+    if (o === cur[0]) o.options.fill = { color: CHIP.cur };
+    o.text.forEach(t => { if (t.options) t.options.fontSize = CHIP.pt; });
+    x += CHIP.w + CHIP.gap;
+  });
+  return s;
+}
+
+/** レイアウト KAWAZOE のタイトル枠を TITLE_W に縮める（スライド側の位置・寸法はこの値で決まる） */
+function shrinkTitleBox(deck) {
+  const lay = deck.pptx.slideLayouts.find(l => l._name === 'KAWAZOE');
+  const ph = lay && lay._slideObjects.find(ob => ob.options && ob.options.placeholder === 'title');
+  if (!ph) throw new Error('レイアウト KAWAZOE のタイトル枠が見つかりません');
+  ph.options.w = TITLE_W;
+}
+
+/**
+ * 出典とページ番号。decklib は出典の枠の下端を 7.35in、ページ番号の下端を 7.40in に置く（下の余白 0.1〜0.15in）。
+ * 枠の上端（出典 1 行 6.85in・2 行 6.5in）は変えずに高さを詰め、下端を 7.20in（下の余白 0.30in）にそろえる。
+ * 下揃えなので文字は 0.15in 上がる。枠の高さは lint の推定（1 行 0.40in、2 行 0.80in）から許容 0.3cm を引いた値以上・
+ * 実機メイリオの高さ（1 行 0.33in、2 行 0.67in）以上。
+ * 出典の枠の幅は 11.4in（ページ番号の枠 12.30in との間を 0.24in 以上あける）。ライブラリは 11.6in で行を組むので、
+ * 推定幅が 11.4in を超える行があるときはその行が入る幅にする。
+ */
+const FOOT_BOTTOM = 7.2;
+const SRC_W = 11.4;
+function restyleFooter(s) {
+  const S = LAYOUT.source, pg = LAYOUT.page;
+  const objs = s.raw._slideObjects.filter(o => o._type === 'text' && o.options);
+  const page = objs.filter(o => o.options.x === pg.x && o.options.y === pg.y && o.options.w === pg.w);
+  if (page.length !== 1) throw new Error(`p${s.page}: ページ番号が見つかりません（${page.length} 個）`);
+  page[0].options.y = r3(FOOT_BOTTOM - pg.h);
+  const src = objs.filter(o => o.options.x === S.x && o.options.w === S.w && (o.options.y === S.y || o.options.y === S.y2));
+  if (src.length !== 1) throw new Error(`p${s.page}: 出典が見つかりません（${src.length} 個）`);
+  const o = src[0];
+  const lines = o.text.map(t => t.text);
+  const maxW = Math.max(...lines.map(l => measure(l, S.size)));
+  const w = Math.min(S.w, Math.max(SRC_W, Math.ceil(maxW * 100) / 100));
+  const h = r2(FOOT_BOTTOM - o.options.y);
+  const lintH = lines.length * (S.size / 72 * 1.2 * 1.18 + 6 / 72) - 0.3 / CM;
+  if (h + 1e-9 < Math.max(lintH, lines.length * S.size * 1.5 / 72)) throw new Error(`p${s.page}: 出典の枠 ${h}in が低すぎます`);
+  if (o.options.x + w > pg.x - GAP + 1e-9) throw new Error(`p${s.page}: 出典の枠の右端 ${r3(o.options.x + w)}in がページ番号に近すぎます`);
+  o.options.h = h;
+  o.options.w = w;
+  const it = s._items.find(i => i.desc === '出典');
+  if (it) { it.h = h; it.w = w; }
+  return s;
+}
+
+/** 本文スライド（spec のタイトル・ノート・出典をそのまま渡す）＋チップ・出典・ページ番号の上書きと、縮めたタイトル枠に対する長さの検査 */
 function contentSlide(deck, id, chapter) {
   const sp = spec(id);
-  return deck.slide({ title: sp.title, chapter, notes: sp.notes, sources: sourcesOf(id) });
+  const s = deck.slide({ title: sp.title, chapter, notes: sp.notes, sources: sourcesOf(id) });
+  const right = LAYOUT.title.x + measure(sp.title, LAYOUT.title.size);
+  const limit = Math.min(LAYOUT.title.x + TITLE_W, CHIP_LEFT - 0.2 / CM);
+  if (right > limit + 1e-9) throw new Error(`${id}「${sp.title}」: タイトルの推定右端 ${r3(right)}in > 上限 ${r3(limit)}in`);
+  restyleChips(s);
+  restyleFooter(s);
+  return s;
 }
 
 /**
@@ -141,7 +250,8 @@ function itemCard(s, id, o) {
   if (sum + g * (n - 1) > avail + 1e-6 || (o.gap == null && n > 1 && g < o.minGap - 1e-6)) {
     throw new Error(`${id} カード「${textOf(o.title)}」: 高さ不足（項目 ${sum.toFixed(2)}in + 間隔 > ${avail.toFixed(2)}in）`);
   }
-  let cy = top;
+  // center: 項目の間隔を maxGap までに抑え、余った高さは見出しの下の領域で上下に等分する（項目の少ない列の下が空かないように）
+  let cy = top + (o.center ? Math.max(0, (avail - sum - g * (n - 1)) / 2) : 0);
   o.items.forEach((lines, k) => {
     s.text([lines[0]], { x: x + pad, y: cy, w: iw, h: heightFor(1, bs, 0), size: bs, color: C.dark });
     rec(id, lines[0]);
@@ -155,8 +265,11 @@ function itemCard(s, id, o) {
   return { gap: g };
 }
 
-/** 3列カードの共通寸法（本文 22pt。項目の2行目は 0.3in 字下げ） */
-const CARD3 = { pad: 0.12, padY: 0.14, titleSize: 24, bodySize: 22, titleGap: 0.12, indent: 0.3, minGap: 0.08, maxGap: 0.3 };
+/**
+ * 3列カードの共通寸法（本文 22pt。項目の2行目は 0.3in 字下げ）。左右の内側余白は S2 のカードと同じ 0.18in。
+ * 項目の間隔は列ごとに、カードの高さに合わせて 0.08〜0.45in で広げ、余りは上下に等分する（center）。
+ */
+const CARD3 = { pad: 0.18, padY: 0.14, titleSize: 24, bodySize: 22, titleGap: 0.12, indent: 0.3, minGap: 0.08, maxGap: 0.45, center: true };
 
 /**
  * 3列カード。列幅は中身の最長行から決め、余りは狭い列から順に配る（水位合わせ）。
@@ -199,10 +312,11 @@ function keyBox(s, id, line, o) {
 async function main() {
   const deck = new Deck({
     file: OUT,
-    chapters: ['共通', 'プロポ\nフォール', 'レミマ\nゾラム', 'ミダ・\nケタ', '使い分け'],
+    chapters: CHAPTERS,
     author: '初期研修医向け麻酔講義',
     deckTitle: '3-2 静脈麻酔薬',
   });
+  shrinkTitleBox(deck);
 
   // ===== S1 表紙 =====
   {
@@ -245,7 +359,7 @@ async function main() {
         items: [
           [['導入：', b('0.5 mg/kg/10 秒'), 'の'], '速度で、就眠まで'],
           [['維持：', b('4〜10 mg/kg/時')]],
-          ['ASA III・IV はより緩徐に'],
+          ['ASA III・IV は', 'より緩徐に'],
         ],
       },
       {
@@ -261,7 +375,7 @@ async function main() {
         title: '注意', titleColor: C.vermilion,
         items: [
           ['脂肪乳剤：清潔操作、', '開封後すぐ使う'],
-          ['小児の ICU', ['人工呼吸中の鎮静は', danger('禁忌')]],
+          ['小児の ICU 人工呼吸中の', ['鎮静は', danger('禁忌')]],
           ['本剤・成分への', ['過敏症の既往（', danger('禁忌'), '）']],
         ],
       },
@@ -293,8 +407,8 @@ async function main() {
       {
         title: '注意', titleColor: C.vermilion,
         items: [
-          ['リンゲル液で白濁・閉塞', '（配合変化）'],
-          ['覚醒が遅れることがある'],
+          ['リンゲル液で白濁・', '閉塞（配合変化）'],
+          ['覚醒が遅れる', 'ことがある'],
           ['拮抗後の再鎮静'],
         ],
       },
@@ -319,7 +433,7 @@ async function main() {
         items: [
           ['健忘・抗不安'],
           ['作用がやや長い'],
-          ['肝代謝（CYP3A4）'],
+          ['肝代謝', '（CYP3A4）'],
         ],
       },
       {
@@ -382,7 +496,7 @@ async function main() {
     head.forEach(t => rec(id, t));
     body.forEach(r => r.forEach(t => rec(id, t)));
     s.table([head, ...body.map(([a, c]) => [{ text: a, bold: true, fill: C.bg }, c])], {
-      x: X0, y: TOP, colW: [4.0, BW - 4.0], size: 24, rowH: 0.62,
+      x: X0, y: TOP, colW: [4.0, BW - 4.0], size: 24, rowH: 0.62, headAlign: 'left',
     });
   }
 
@@ -397,13 +511,15 @@ async function main() {
       '挿管の刺激で一時的に上がり、そのあとまた下がる',
     ];
     items.forEach(t => rec(id, t));
-    const by = 1.95, gap = 16;
+    // 箇条書き（実機メイリオで下端 約 5.07in）と強調ボックスの間、ボックスと出典の間をどちらも約 0.3in にする
+    const by = 1.9, gap = 20, kh = 0.85;
     s.bullets(items, { y: by, size: 28, gap });
     const bh = heightFor(items.length, 28, gap);
-    const ky = by + bh + 0.35;
-    keyBox(s, id, ['導入薬を入れたら、血圧は ', { text: '1〜2 分ごと', color: C.vermilion }, 'に測る'],
-      { x: X0, y: ky, w: BW, h: 0.95 });
-    if (ky + 0.95 > SRC2_TOP - GAP + 1e-6) throw new Error('S8: 強調ボックスが出典に近すぎます');
+    const ky = r2(by + bh + GAP);
+    // 強調は数値と単位だけ（バーミリオン＋下線。色だけに頼らない）
+    keyBox(s, id, ['導入薬を入れたら、血圧は ', { text: '1〜2 分', color: C.vermilion, underline: true }, 'ごとに測る'],
+      { x: X0, y: ky, w: BW, h: kh });
+    if (ky + kh > SRC2_TOP - GAP + 1e-6) throw new Error('S8: 強調ボックスが出典に近すぎます');
   }
 
   // ===== S9 まとめ（箇条書き5行） =====
@@ -418,7 +534,9 @@ async function main() {
       '導入後は血圧を 1〜2 分ごとに、昇圧薬を手元に',
     ];
     items.forEach(t => rec(id, t));
-    s.bullets(items, { y: 2.0, size: 24, gap: 26 });
+    // 1 項目目（プロポフォール）は 28pt・26pt では 1 行に入らない（推定 12.8in・11.9in > 使える幅 11.8in）ので、
+    // 5 項目とも 25pt（推定 11.4in）にそろえる。行間を広げて、出典の上（実機メイリオで下端 約 6.17in）まで使う
+    s.bullets(items, { y: 1.9, w: BW, size: 25, gap: 30 });
   }
 
   checkOnSlide();
