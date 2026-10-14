@@ -359,7 +359,8 @@ async function main() {
       {
         title: '仕組み', titleColor: C.blue,
         items: [
-          ['コリンエステラーゼ', 'を阻害'],
+          // 助詞「を」を行頭に出さない（カード2の幅は cardRow がこの行に合わせて広げる）
+          ['コリンエステラーゼを', '阻害'],
           ['アセチルコリンを', '増やして競り勝つ'],
           ['効果に天井がある'],
         ],
@@ -387,7 +388,7 @@ async function main() {
       [{ text: '深い', bold: true }, 'PTC 1〜2', { text: [[blue('4 mg/kg')]] }, { text: [[verm('効かない')]] }],
       [{ text: '中等度', bold: true }, 'TOF 1〜3 回', { text: [[blue('2 mg/kg')], '（TOF 1 回は 4 mg/kg）'] },
         { text: [[verm('使わない')], '（遅く不確実）'] }],
-      [{ text: '浅い', bold: true }, 'TOF 4 回、比 0.4 未満', { text: [[blue('2 mg/kg')]] }, { text: '不十分なことが多い', color: C.vermilion }],
+      [{ text: '浅い', bold: true }, 'TOF 4 回、比 0.4 未満', { text: [[blue('2 mg/kg')]] }, { text: [[verm('不十分なことが多い')]] }],
       [{ text: '最小', bold: true }, 'TOF比 0.4〜0.9 未満', { text: [[blue('2 mg/kg')]] }, { text: [[blue('使える')], '（天井に注意）'] }],
     ];
     rows.forEach(r => r.forEach(c => {
@@ -395,7 +396,10 @@ async function main() {
       (Array.isArray(t) ? t : String(t).split('\n')).forEach(l => rec(id, l));
     }));
     const rowH = [0.62, 0.78, 1.1, 0.78, 1.1];
-    const tb = s.table(rows, { x: X0, y: TOP, colW: [1.27, 3.7, 3.94, 3.32], size: 22, rowH });
+    // 列幅: 「モニター」列（TOF 4 回、比 0.4 未満）に余裕を回す。セルの左右余白は 6pt。
+    // 「スガマデクス」列は「（TOF 1 回は 4 mg/kg）」、「ネオスチグミン」列は「不十分なことが多い」が1行に入る幅を残す
+    const colW = [1.2, 3.89, 3.89, 3.25];
+    const tb = s.table(rows, { x: X0, y: TOP, colW, size: 22, rowH, margin: [4, 6, 4, 6] });
     checkBottom(id, '表', tb.y + tb.h);
   }
 
@@ -433,35 +437,51 @@ async function main() {
     const id = 'S8';
     // 出典: Thilen の項を「Anesthesiology」の前で分ける
     const s = contentSlide(deck, id, 4, { 'Thilen': 'Anesthesiology' });
+    // 5 つの箱は 0.24in 間隔で横に並べ、流れの向きは箱の列の下に通した 1 本の長い矢印で示す。
+    //   箱と箱の間に矢印を置くと、矢印と箱の間を 0.24in 以上あけられない
+    //   （「（TOF・PTC）」「0.9 以上を確認」を 1 行に保つと、箱の幅だけで 22pt でも 10.8in 要る）。
+    // 改行は語の切れ目。「0.9 以上を確認」は値と対象を切り離さず 1 行に。
+    // 箱の内側の余白（推定幅に対して）:
+    //   英字を含む箱（1・4）は m=0.15 に加えて extra を足す。英字と全角の括弧・中黒が隣り合う行は
+    //   和欧間の空きで推定より幅を取る（LibreOffice の描画では 0.15in 足りずに「（TOF・」で折れた）。
+    //   全角だけの箱（2・3・5）は推定幅が実幅より約 1 割大きいので m=0.08 でも実際の余白は 0.15in を超える。
     const steps = [
-      { lines: ['深さを測る', '（TOF・PTC）'], wt: 6 },
-      { lines: ['深さで', '用量を', '決める'], wt: 1 },
-      { lines: ['拮抗薬を', '投与'], wt: 1 },
-      { lines: ['定量 TOF比', '0.9 以上を', '確認'], key: true, wt: 3 },
-      { lines: ['意識・呼吸と', '合わせて抜管'], wt: 2 },
+      { lines: ['深さを測る', '（TOF・PTC）'], m: 0.15, extra: 0.3 },
+      { lines: ['深さで', '用量を', '決める'], m: 0.08 },
+      { lines: ['拮抗薬を', '投与'], m: 0.08 },
+      { lines: ['定量 TOF比', '0.9 以上を確認'], key: true, m: 0.15, extra: 0.06 },
+      { lines: ['意識・呼吸と', '合わせて抜管'], m: 0.08 },
     ];
-    const size = 24, m = 0.04, ag = 0.5, ins = 0.1;
-    const need = steps.map(st => Math.max(...st.lines.map(l => measure(textOf(l), size))) + 2 * m + 0.001);
-    const total = BW - (steps.length - 1) * ag;
-    const slack = total - need.reduce((a, v) => a + v, 0);
-    // 英大文字（TOF・PTC）と和欧間の空き（PowerPoint 既定で入る）は推定より幅を取るので、
-    // 余りは英字を含むチップに厚く配る（wt の比）
-    const wsum = steps.reduce((a, st) => a + st.wt, 0);
-    const extra = steps.map(st => slack * st.wt / wsum);
-    if (slack < 0.5) throw new Error(`S8: チップの余裕が足りません（${need.map(v => v.toFixed(2)).join(' + ')}、余り ${slack.toFixed(2)}in）`);
-    const widths = need.map((v, i) => v + extra[i]);
-    const chh = 2.2;
-    const y = TOP + (BOTTOM - TOP - chh) / 2;
+    // 22pt: 24pt では箱の必要幅の合計が 0.24in 間隔で並べられる幅（11.27in）を超える
+    const size = 22, bg = GAP;
+    const RR = 0.1, rrInset = 2 * RR * (1 - Math.SQRT1_2);   // 角丸の文字領域は角丸の分だけ内側に入る
+    // 箱の幅: 最長行＋左右の余白＋角丸の分。余りは狭い箱から順に配って幅をそろえる（水位合わせ）
+    const need = steps.map(st => Math.max(...st.lines.map(l => measure(textOf(l), size))) + 2 * st.m + rrInset + (st.extra || 0) + 0.001);
+    const total = BW - (steps.length - 1) * bg;
+    if (need.reduce((a, v) => a + v, 0) > total + 1e-9) {
+      throw new Error(`S8: 箱の必要幅 ${need.map(v => v.toFixed(2)).join(' + ')} > ${total.toFixed(2)}in`);
+    }
+    const fixed = new Set();
+    let W = 0;
+    for (;;) {
+      const free = need.map((v, i) => i).filter(i => !fixed.has(i));
+      W = (total - [...fixed].reduce((a, i) => a + need[i], 0)) / free.length;
+      const over = free.filter(i => need[i] > W + 1e-9);
+      if (!over.length) break;
+      over.forEach(i => fixed.add(i));
+    }
+    const widths = need.map((v, i) => (fixed.has(i) ? v : W));
+    // 縦: 箱 → 0.42in 下に長い矢印。まとまりを本文領域の上下中央に置く
+    const chh = 2.6, arrowDy = 0.42, headH = 0.12;
+    const y = TOP + (BOTTOM - TOP - (chh + arrowDy + headH)) / 2;
     let x = X0;
     steps.forEach((st, i) => {
-      chip(s, id, st.lines, { x, y, w: widths[i], h: chh, size, margin: m,
+      chip(s, id, st.lines, { x, y, w: widths[i], h: chh, size, margin: st.m,
         line: st.key ? { color: C.teal, width: 3.5 } : { color: C.blue, width: 2 } });
-      if (i < steps.length - 1) {
-        const yc = y + chh / 2;
-        s.arrow({ x1: x + widths[i] + ins, y1: yc, x2: x + widths[i] + ag - ins, y2: yc, color: ARROW, width: 3 });
-      }
-      x += widths[i] + ag;
+      x += widths[i] + bg;
     });
+    const ya = y + chh + arrowDy;
+    s.arrow({ x1: X0, y1: ya, x2: RIGHT, y2: ya, color: ARROW, width: 4.5 });
   }
 
   // ===== S9 残りやすい患者（箇条書き5行） =====
@@ -476,7 +496,8 @@ async function main() {
       '神経筋疾患（重症筋無力症など）',
     ];
     items.forEach(t => rec(id, t));
-    const gap = 22, by = 1.92, size = 28;
+    // 箇条書きの S2・S10 と同じ 24pt（行頭の位置をそろえる）。行間は S10 と同じ
+    const gap = 28, by = 1.95, size = 24;
     s.bullets(items, { y: by, size, gap });
     checkBottom(id, '箇条書き', by + heightFor(items.length, size, gap));
   }

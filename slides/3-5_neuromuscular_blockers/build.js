@@ -190,17 +190,20 @@ function itemCardNeedH(o, gap) {
   const { sizes } = titleLinesOf(o);
   const h1 = heightFor(1, o.bodySize, 0);
   const itemH = o.items.map(ls => h1 * ls.length);
-  return 2 * o.padY + hNeed(sizes) + o.titleGap + itemH.reduce((a, v) => a + v, 0) + gap * (o.items.length - 1);
+  return 2 * o.padY + (o.titleH || hNeed(sizes)) + o.titleGap + itemH.reduce((a, v) => a + v, 0) + gap * (o.items.length - 1);
 }
+// titleH: 見出し欄の高さ（並べたカードで本文の開始位置をそろえるとき、高い方に合わせて渡す）
 function itemCard(s, id, o) {
   const { x, y, w, h, pad, padY, bodySize: bs, titleGap: tg, indent } = o;
   s.box({ x, y, w, h, fill: o.fill || C.bg, line: o.line, radius: 0.08 });
   const iw = w - 2 * pad;
   const { lines: tl, sizes } = titleLinesOf(o);
   const th = hNeed(sizes);
+  if (o.titleH && o.titleH < th - 1e-6) throw new Error(`${id}: titleH ${o.titleH} が見出しの高さ ${th} より小さい`);
+  const tArea = o.titleH || th;
   s.text(tl, { x: x + pad, y: y + padY, w: iw, h: th, size: o.titleSize, bold: true, color: o.titleColor });
   tl.forEach(l => rec(id, l));
-  const top = y + padY + th + tg;
+  const top = y + padY + tArea + tg;
   const avail = y + h - padY - top;
   const h1 = heightFor(1, bs, 0);
   const itemH = o.items.map(ls => h1 * ls.length);
@@ -237,8 +240,40 @@ function commonGap(cards, geo) {
   return g;
 }
 
+/** カード内の左右余白（全スライド共通。S2 に合わせる） */
+const PAD = 0.22;
+
+/**
+ * 左右2枚のカード。幅は等分。片方の最長行が等分幅に入らないときだけ、その列を必要幅まで広げる。
+ * 見出し欄の高さは2枚の高い方にそろえる（本文1行目の高さをそろえる）。項目の間隔も2枚で共通。
+ */
+function twoCards(s, id, cards, geo, cg) {
+  const half = (BW - cg) / 2;
+  const need = cards.map(c => Math.ceil(itemCardNeedW({ ...geo, ...c }) * 100) / 100);
+  if (need[0] + need[1] > BW - cg + 1e-9) throw new Error(`${id}: 2列カードの必要幅 ${need.join(' + ')} > ${(BW - cg).toFixed(2)}in`);
+  let ws = [half, half];
+  if (need[1] > half) ws = [BW - cg - need[1], need[1]];
+  else if (need[0] > half) ws = [need[0], BW - cg - need[0]];
+  const titleH = Math.max(...cards.map(c => hNeed(titleLinesOf({ ...geo, ...c }).sizes)));
+  const g = { ...geo, titleH };
+  const gap = commonGap(cards, g);
+  cards.forEach((c, i) => itemCard(s, id, { ...g, ...c, x: i ? X0 + ws[0] + cg : X0, w: ws[i], gap }));
+  return ws;
+}
+
+/** 箇条書きを top〜bottom の間に縦に均等配置する（行間は maxGap pt まで広げ、上下の余白を等しく） */
+function spreadBullets(s, id, items, size, bottom, maxGap = 32) {
+  items.forEach(t => rec(id, t));
+  const avail = bottom - TOP;
+  let gap = maxGap;
+  while (gap > 10 && heightFor(items.length, size, gap) > avail - 0.1) gap--;
+  const bh = heightFor(items.length, size, gap);
+  if (bh > avail + 1e-6) throw new Error(`${id}: 箇条書きが出典に近すぎます`);
+  s.bullets(items, { y: Math.round((TOP + (avail - bh) / 2) * 100) / 100, size, gap });
+}
+
 /** 3列カードの共通寸法（本文 22pt。項目の2行目は 0.3in 字下げ） */
-const CARD3 = { pad: 0.12, padY: 0.16, titleSize: 24, bodySize: 22, titleGap: 0.14, indent: 0.3, minGap: 0.08, maxGap: 0.42 };
+const CARD3 = { pad: PAD, padY: 0.16, titleSize: 24, bodySize: 22, titleGap: 0.14, indent: 0.3, minGap: 0.08, maxGap: 0.42 };
 
 /**
  * 3列カード。列幅は中身の最長行から決め、余りは狭い列から順に配る（水位合わせ）。
@@ -318,19 +353,18 @@ async function main() {
   {
     const id = 'S2';
     const s = contentSlide(deck, id, 0);
-    const cg = 0.4, cw = (BW - cg) / 2;
+    const cg = 0.4;
     const keyH = 0.82, keyGap = 0.3;
     const ch = BOTTOM2 - keyH - keyGap - TOP;
-    const geo = { y: TOP, w: cw, h: ch, pad: 0.22, padY: 0.16, titleSize: 28, bodySize: 24, titleGap: 0.12, indent: 0.36, minGap: 0.06, maxGap: 0.3 };
-    const cards = [
-      { x: X0, title: 'できること', titleColor: C.blue,
+    const geo = { y: TOP, h: ch, pad: PAD, padY: 0.16, titleSize: 28, bodySize: 24, titleGap: 0.12, indent: 0.36, minGap: 0.06, maxGap: 0.3 };
+    // 警告色はこのスライドでは赤（C00000）1色にそろえる（見出し・危険語・強調ボックス）
+    twoCards(s, id, [
+      { title: 'できること', titleColor: C.blue,
         items: [['骨格筋を動かなくする'], ['挿管しやすくする'], ['術野を静かにする'], ['人工呼吸に同調させる']] },
-      { x: X0 + cw + cg, title: 'できないこと', titleColor: C.vermilion,
+      { title: 'できないこと', titleColor: C.red,
         items: [['眠らせない（意識は残る）'], ['痛みを取らない'], [[danger('自分で呼吸できなくなる')]]] },
-    ];
-    const gap = commonGap(cards, geo);
-    cards.forEach(c => itemCard(s, id, { ...geo, ...c, gap }));
-    keyBox(s, id, ['筋弛緩薬を入れたら、', em('換気は自分の責任', C.vermilion)],
+    ], geo, cg);
+    keyBox(s, id, ['筋弛緩薬を入れたら、', danger('換気は自分の責任')],
       { x: X0, y: TOP + ch + keyGap, w: BW, h: keyH });
   }
 
@@ -342,17 +376,17 @@ async function main() {
     const leadH = heightFor(1, 30, 0);
     s.text([lead], { x: X0, y: TOP, w: BW, h: leadH, size: 30, bold: true, align: 'center' });
     rec(id, lead);
-    const cg = 0.34, cw = (BW - cg) / 2;
+    const cg = 0.34;
     const cy = TOP + leadH + 0.3;
-    const geo = { y: cy, w: cw, h: BOTTOM1 - cy, pad: 0.15, padY: 0.16, titleSize: 28, bodySize: 24, titleGap: 0.12, indent: 0.36, minGap: 0.1, maxGap: 0.3 };
-    const cards = [
-      { x: X0, title: ['非脱分極性', { text: '（ロクロニウム）', size: 24 }], titleColor: C.blue,
+    // 上下の余白も左右（PAD）に近づける。左右とも 2行・1行・1行 にして、項目の段をそろえる
+    // （右の1項目めは「受容体を刺激し続けて／不応にする」で改行。左の「アセチルコリンと／受容体を取り合う」と対）
+    const geo = { y: cy, h: BOTTOM1 - cy, pad: PAD, padY: 0.2, titleSize: 28, bodySize: 24, titleGap: 0.12, indent: 0.36, minGap: 0.1, maxGap: 0.3 };
+    twoCards(s, id, [
+      { title: ['非脱分極性', { text: '（ロクロニウム）', size: 24 }], titleColor: C.blue,
         items: [['アセチルコリンと', '受容体を取り合う'], ['筋は静かに動かなくなる'], ['スガマデクスで拮抗できる']] },
-      { x: X0 + cw + cg, title: ['脱分極性', { text: '（スキサメトニウム）', size: 24 }], titleColor: C.vermilion,
-        items: [['受容体を刺激し続けて不応にする'], ['最初に筋線維束攣縮'], [[b('拮抗薬はない')]]] },
-    ];
-    const gap = commonGap(cards, geo);
-    cards.forEach(c => itemCard(s, id, { ...geo, ...c, gap }));
+      { title: ['脱分極性', { text: '（スキサメトニウム）', size: 24 }], titleColor: C.vermilion,
+        items: [['受容体を刺激し続けて', '不応にする'], ['最初に筋線維束攣縮'], [[b('拮抗薬はない')]]] },
+    ], geo, cg);
   }
 
   // ===== S4 ロクロニウム（3列カード） =====
@@ -365,7 +399,8 @@ async function main() {
         items: [
           [['挿管：', b('0.6 mg/kg')], ['（上限 ', b('0.9 mg/kg'), '）']],
           [['追加：', b('0.1〜0.2 mg/kg')]],
-          [['持続：', b('7 μg/kg/分'), 'で開始']],
+          // 余白 PAD で1行に入らない。「挿管：0.6 mg/kg／（上限 …）」と同じく、値までを1行目に置いて改行
+          [['持続：', b('7 μg/kg/分')], 'で開始'],
         ],
       },
       {
@@ -436,11 +471,12 @@ async function main() {
         items: [
           [['効くまで', b('約 1 分')]],
           [[b('約 10 分'), 'で戻る']],
-          ['血漿コリンエステラーゼで', '分解'],
+          // 1行（22pt で 4.79in）は3列の幅に入らない。「分解」2字が孤立しないよう語の切れ目で改行
+          ['血漿コリンエステラーゼ', 'で分解'],
         ],
       },
       {
-        title: '副作用', titleColor: C.vermilion,
+        title: '副作用', titleColor: C.red,   // 危険語（赤）と警告色をそろえる
         items: [
           [[danger('高カリウム血症')]],
           [[danger('悪性高熱症'), 'の誘因']],
@@ -455,24 +491,24 @@ async function main() {
   {
     const id = 'S7';
     const s = contentSlide(deck, id, 3);
-    const cg = 0.34, cw = (BW - cg) / 2;
-    const geo = { y: TOP, w: cw, h: BOTTOM2 - TOP, pad: 0.15, padY: 0.16, titleSize: 28, bodySize: 24, titleGap: 0.14, indent: 0.36, minGap: 0.1, maxGap: 0.32 };
-    const cards = [
-      { x: X0, title: ['高カリウム血症', { text: '（スキサメトニウム）', size: 24 }], titleColor: C.vermilion,
+    const cg = 0.34;
+    // 余白 PAD では右の「ダントロレンの場所を知っておく」（5.60in）が等分幅に入らないので、右列だけ必要幅まで広げる。
+    // 見出し欄は左（2行）にそろえ、左右の本文1行目の高さを合わせる。警告色は赤1色（見出し・危険語）。
+    const geo = { y: TOP, h: BOTTOM2 - TOP, pad: PAD, padY: 0.16, titleSize: 28, bodySize: 24, titleGap: 0.14, indent: 0.36, minGap: 0.1, maxGap: 0.32 };
+    twoCards(s, id, [
+      { title: ['高カリウム血症', { text: '（スキサメトニウム）', size: 24 }], titleColor: C.red,
         items: [
           ['脱分極で筋から K が出る'],
           [['通常は', b('約 0.5 mEq/L'), ' 上昇']],
           ['熱傷・広範外傷・脱神経・', '長期臥床・神経筋疾患では', ['急上昇し', danger('心停止')]],
         ] },
-      { x: X0 + cw + cg, title: '悪性高熱症', titleColor: C.vermilion,
+      { title: '悪性高熱症', titleColor: C.red,
         items: [
           ['誘因：スキサメトニウムと', '揮発性麻酔薬'],
           [[b('EtCO2 上昇'), '、頻脈、'], '筋硬直、体温上昇'],
           [[b('ダントロレン'), 'の場所を知っておく']],
         ] },
-    ];
-    const gap = commonGap(cards, geo);
-    cards.forEach(c => itemCard(s, id, { ...geo, ...c, gap }));
+    ], geo, cg);
   }
 
   // ===== S8 アナフィラキシー（箇条書き4行＋強調ボックス） =====
@@ -515,11 +551,8 @@ async function main() {
       '高齢、肝腎障害、低体温、吸入麻酔、Mg で長く残る',
       ['終わりに拮抗して、', b('TOF比 0.9 以上'), 'を確認する'],
     ];
-    items.forEach(t => rec(id, t));
-    const gap = 22, by = 2.0;
-    const bh = heightFor(items.length, 26, gap);
-    if (by + bh > BOTTOM2 + 1e-6) throw new Error('S9: 箇条書きが出典に近すぎます');
-    s.bullets(items, { y: by, size: 26, gap });
+    // 26pt。行間を広げて本文の上端〜出典の上の間に縦に均等配置
+    spreadBullets(s, id, items, 26, BOTTOM2);
   }
 
   // ===== S10 まとめ（箇条書き5行） =====
@@ -533,11 +566,8 @@ async function main() {
       '筋弛緩薬と抗菌薬はアナフィラキシーの主な原因',
       ['深さはモニターで決め、抜管前に ', b('TOF比 0.9 以上')],
     ];
-    items.forEach(t => rec(id, t));
-    const gap = 26, by = 2.05;
-    const bh = heightFor(items.length, 24, gap);
-    if (by + bh > BOTTOM1 + 1e-6) throw new Error('S10: 箇条書きが出典に近すぎます');
-    s.bullets(items, { y: by, size: 24, gap });
+    // 2行目（ロクロニウム…）は 26pt では1行に入らないので 24pt のまま。縦に均等配置
+    spreadBullets(s, id, items, 24, BOTTOM1);
   }
 
   checkOnSlide();

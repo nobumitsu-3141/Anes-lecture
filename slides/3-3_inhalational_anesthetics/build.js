@@ -193,14 +193,19 @@ function itemCard(s, id, o) {
 
 /**
  * 3列カード。列幅は中身の最長行から決め、余りは狭い列から順に配る（水位合わせ）。
+ * 先に各列へ geo.slack（余りが足りなければ余りの 1/3）を足しておく。最長行に数字・% が多い列
+ * （メイリオの半角数字は推定より幅広い）が、推定ちょうどの幅で折り返されないようにするため。
  * cards: [{title, titleColor, items}], 下端 bottom, geo: 寸法（本文サイズなど）
  */
 function threeCards(s, id, cards, bottom, geo) {
   const total = BW - 2 * GAP;
-  const need = cards.map(c => itemCardNeedW({ ...geo, ...c }));
-  if (need.reduce((a, v) => a + v, 0) > total + 1e-9) {
-    throw new Error(`${id}: 3列カードの必要幅 ${need.map(v => v.toFixed(2)).join(' + ')} > ${total.toFixed(2)}in`);
+  const need0 = cards.map(c => itemCardNeedW({ ...geo, ...c }));
+  const spare = total - need0.reduce((a, v) => a + v, 0);
+  if (spare < -1e-9) {
+    throw new Error(`${id}: 3列カードの必要幅 ${need0.map(v => v.toFixed(2)).join(' + ')} > ${total.toFixed(2)}in`);
   }
+  const slack = Math.min(geo.slack || 0, spare / cards.length);
+  const need = need0.map(v => v + slack);
   const fixed = new Set();
   let W = 0;
   for (;;) {
@@ -258,10 +263,10 @@ function polyArrow(s, pts, o = {}) {
 function axis(s, x1, y1, x2, y2) {
   polyArrow(s, [[x1, y1], [x2, y2]], { color: AXIS_C, width: 2, head: 0.16, half: 0.08 });
 }
-/** 凡例 1 行: 短い線（曲線と同じ色・太さ）＋ラベル（同色・太字） */
+/** 凡例 1 行: 短い線（曲線と同じ色・太さ・線種）＋ラベル（同色・太字） */
 function legend(s, o) {
   const yc = o.y + L22 / 2;
-  s.polyline([[o.x, r3(yc)], [o.x + o.sw, r3(yc)]], { color: o.color, width: o.lw || 3.5 });
+  s.polyline([[o.x, r3(yc)], [r3(o.x + o.sw), r3(yc)]], { color: o.color, width: o.lw || 3.5, dash: o.dash });
   s.text(o.text, { x: r3(o.x + o.sw + 0.15), y: o.y, w: o.w, h: L22, size: 22, bold: true, color: o.color });
 }
 
@@ -280,8 +285,8 @@ function flowArrow(s, x1, y1, x2, y2, o = {}) {
 }
 
 /** 3列カードの寸法 */
-const CARD24 = { pad: 0.14, padY: 0.16, titleSize: 26, bodySize: 24, titleGap: 0.14, indent: 0.3, minGap: 0.1, maxGap: 0.32 };
-const CARD22 = { pad: 0.13, padY: 0.15, titleSize: 24, bodySize: 22, titleGap: 0.12, indent: 0.3, minGap: 0.1, maxGap: 0.3 };
+const CARD24 = { pad: 0.14, padY: 0.16, titleSize: 26, bodySize: 24, titleGap: 0.14, indent: 0.3, minGap: 0.1, maxGap: 0.32, slack: 0.35 };
+const CARD22 = { pad: 0.13, padY: 0.15, titleSize: 24, bodySize: 22, titleGap: 0.12, indent: 0.3, minGap: 0.1, maxGap: 0.3, slack: 0.35 };
 
 // ---------------------------------------------------------------------------
 async function main() {
@@ -303,9 +308,13 @@ async function main() {
     const id = 'S2';
     const s = contentSlide(deck, id, 0);
     // --- 図（模式。横軸 時間、縦軸 肺胞濃度 ÷ 吸入濃度 0〜1）---
-    const ax0 = 1.3, ay0 = 5.5, axTop = 3.0, axR = 7.15;
+    // 上から: 凡例（1行）→ 縦軸ラベル（軸の先端の真上）→ 図。曲線は色に加えて線種でも区別する
+    // （デスフルラン 実線・セボフルラン 破線。比 = 1 の基準線は細い点線）。
+    const legY = TOP;                                    // 凡例の行
+    const labY = r3(legY + L22 + GAP);                   // 縦軸ラベルの行
+    const ax0 = 1.3, axTop = r3(labY + L22 + GAP), ay0 = 5.6, axR = 7.15;
     const xs = ax0 + 0.03, xe = 6.9, T = 30;            // 0〜30 分（模式）
-    const y1 = 3.3;                                      // 比 = 1 の高さ
+    const y1 = r3(axTop + 0.25);                         // 比 = 1 の高さ
     const X = t => xs + (xe - xs) * t / T;
     const Y = v => ay0 - (ay0 - y1) * v;
     const des = t => 1 - 0.17 * Math.exp(-t / 25) - 0.83 * Math.exp(-t / 0.8);
@@ -315,23 +324,25 @@ async function main() {
       for (let k = 0; k <= 150; k++) { const t = T * k / 150; pts.push([r3(X(t)), r3(Y(f(t)))]); }
       return pts;
     };
+    const DES = { color: C.teal, width: 3.5 };
+    const SEVO = { color: C.blue, width: 3.5, dash: 'dash' };
     // 比 = 1 の点線
-    s.hline({ x: ax0, y: r3(Y(1)), w: r3(xe - ax0), color: AXIS_C, width: 1.5, dash: 'dash' });
+    s.hline({ x: ax0, y: r3(Y(1)), w: r3(xe - ax0), color: AXIS_C, width: 1.5, dash: 'sysDot' });
     axis(s, ax0, ay0, ax0, axTop);
     axis(s, ax0, ay0, axR, ay0);
-    s.polyline(curve(sevo), { color: C.blue, width: 3.5 });
-    s.polyline(curve(des), { color: C.teal, width: 3.5 });
+    s.polyline(curve(sevo), SEVO);
+    s.polyline(curve(des), DES);
     // 目盛り（縦軸の外）
     const tw = 0.4;
     s.label(fig(id, '1'), { x: r3(ax0 - 0.12 - tw), y: r3(Y(1) - L22 / 2), w: tw, h: L22, align: 'right' });
     s.label(fig(id, '0'), { x: r3(ax0 - 0.12 - tw), y: r3(ay0 - L22 / 2), w: tw, h: L22, align: 'right' });
-    // 軸の名前（図の外）
-    s.text(fig(id, '肺胞濃度 ÷ 吸入濃度'), { x: X0, y: 1.92, w: 3.5, h: L22, size: 22 });
+    // 軸の名前（図の外）。縦軸は矢印の先端のすぐ上、横軸は矢印の右端の下
+    s.text(fig(id, '肺胞濃度 ÷ 吸入濃度'), { x: X0, y: labY, w: 3.5, h: L22, size: 22 });
     s.text(fig(id, '時間'), { x: r3(axR - 1.2), y: r3(ay0 + 0.17), w: 1.2, h: L22, size: 22, align: 'right' });
-    // 曲線のラベル（図の外・上）
-    const lx = 4.35, sw = 0.55;
-    legend(s, { x: lx, y: 1.92, sw, w: 2.3, color: C.teal, text: fig(id, 'デスフルラン') });
-    legend(s, { x: lx, y: r3(1.92 + L22 + 0.1), sw, w: 2.3, color: C.blue, text: fig(id, 'セボフルラン') });
+    // 曲線のラベル（図の外・上）: 凡例 1 行。線の見本は曲線と同じ色・線種
+    const sw = 0.6, lw = 2.1, lgap = 0.4;
+    legend(s, { x: ax0, y: legY, sw, w: lw, ...DES, lw: DES.width, text: fig(id, 'デスフルラン') });
+    legend(s, { x: r3(ax0 + sw + 0.15 + lw + lgap), y: legY, sw, w: lw, ...SEVO, lw: SEVO.width, text: fig(id, 'セボフルラン') });
     // --- 箇条書き（右） ---
     const b2 = L(id, '肺胞濃度（≈ 呼気濃度）が、脳の濃度の目安', '脳の');
     const b3 = L(id, '血液に溶けにくい薬ほど、立ち上がりと覚醒が速い', '立ち上がり');
@@ -343,7 +354,7 @@ async function main() {
     ];
     const bx = 7.7, igap = 0.42;
     const bh = bulletBlockHeight(items, 22, igap);
-    const mid = (1.92 + ay0 + 0.17 + L22) / 2;
+    const mid = (TOP + ay0 + 0.17 + L22) / 2;
     bulletBlock(s, items, { x: bx, y: r3(mid - bh / 2), w: r3(XR - bx), size: 22, igap });
   }
 
@@ -451,7 +462,7 @@ async function main() {
         items: [
           L(id, '鎮痛作用がある'),
           E(L(id, 'MAC 約 105%：単独では麻酔にならない', '単独'), 0, b('MAC 約 105%'), '：'),
-          L(id, '他の薬の必要量を減らす', '必要量'),
+          L(id, '他の薬の必要量を減らす'),
         ],
       },
       {
@@ -500,38 +511,36 @@ async function main() {
   {
     const id = 'S8';
     const s = contentSlide(deck, id, 4);
-    const size = 24, m = 0.1;
+    const size = 24, m = 0.08;
     const steps = [
       L(id, '① 挿管後、高流量で濃度を上げる', '濃度'),
-      L(id, '② 呼気濃度が目標に達したら低流量へ', '目標'),
+      L(id, '② 呼気濃度が目標に達したら低流量へ', '達したら'),
       L(id, '③ 年齢補正 MAC で調節', 'MAC'),
       L(id, '④ 終了前に濃度を下げる', '濃度'),
       L(id, '⑤ 最後は高流量で洗い出す', '洗い出す'),
     ];
-    const needW = lines => Math.max(...lines.map(l => measure(textOf(l), size))) + 2 * m + 0.12;
+    const needW = lines => Math.max(...lines.map(l => measure(textOf(l), size))) + 2 * m + 0.06;
     const ch = 1.16;                      // 2行の箱
     const r1 = TOP + 0.05, r2 = r3(r1 + ch + 0.62);
-    // 1段目 ①②③（全幅に配る）。2段目 ④⑤ は ①② と同じ列にそろえる
-    const g = 0.62;
-    const w1 = steps.slice(0, 3).map(needW);
-    const extra = (BW - 2 * g - w1.reduce((a, v) => a + v, 0)) / 3;
-    if (extra < 0) throw new Error(`S8: 1段目のチップが収まりません（${extra.toFixed(2)}in）`);
-    const ws = w1.map(v => r3(v + extra));
-    const xs = [X0, r3(X0 + ws[0] + g), r3(X0 + ws[0] + g + ws[1] + g)];
-    if (needW(steps[3]) > ws[0] || needW(steps[4]) > ws[1]) throw new Error('S8: 2段目のチップが1段目の列に収まりません');
-    const chip = (lines, x, y, w, color) => s.box({ x, y, w, h: ch, fill: C.bg, line: { color, width: 2.25 }, radius: 0.12,
+    // 5 つとも同じ幅・同じ枠色。1段目 ①②③ は全幅に、2段目 ④⑤ は中央にそろえる（左右の重さをそろえる）
+    const g = 0.55;
+    const cw = r3((BW - 2 * g) / 3);
+    steps.forEach((l, k) => { if (needW(l) > cw + 1e-9) throw new Error(`S8: チップ${k + 1} が幅 ${cw}in に収まりません（${needW(l).toFixed(2)}in）`); });
+    const xs = [0, 1, 2].map(k => r3(X0 + k * (cw + g)));
+    const x4 = r3(X0 + (BW - (2 * cw + g)) / 2), x5 = r3(x4 + cw + g);
+    const chip = (lines, x, y) => s.box({ x, y, w: cw, h: ch, fill: C.bg, line: { color: C.blue, width: 2.25 }, radius: 0.12,
       text: lines, size, bold: true, color: C.dark, margin: m });
-    const ac = 0.08;
-    chip(steps[0], xs[0], r1, ws[0], C.blue);
-    flowArrow(s, xs[0] + ws[0] + ac, r1 + ch / 2, xs[1] - ac, r1 + ch / 2);
-    chip(steps[1], xs[1], r1, ws[1], C.blue);
-    flowArrow(s, xs[1] + ws[1] + ac, r1 + ch / 2, xs[2] - ac, r1 + ch / 2);
-    chip(steps[2], xs[2], r1, ws[2], C.teal);
-    chip(steps[3], xs[0], r2, ws[0], C.blue);
-    flowArrow(s, xs[0] + ws[0] + ac, r2 + ch / 2, xs[1] - ac, r2 + ch / 2);
-    chip(steps[4], xs[1], r2, ws[1], C.blue);
+    const ac = 0.07;
+    chip(steps[0], xs[0], r1);
+    flowArrow(s, xs[0] + cw + ac, r1 + ch / 2, xs[1] - ac, r1 + ch / 2);
+    chip(steps[1], xs[1], r1);
+    flowArrow(s, xs[1] + cw + ac, r1 + ch / 2, xs[2] - ac, r1 + ch / 2);
+    chip(steps[2], xs[2], r1);
+    chip(steps[3], x4, r2);
+    flowArrow(s, x4 + cw + ac, r2 + ch / 2, x5 - ac, r2 + ch / 2);
+    chip(steps[4], x5, r2);
     // ③ → ④ の折り返し（下 → 左 → 下）
-    const ym = r3((r1 + ch + r2) / 2), c3 = r3(xs[2] + ws[2] / 2), c4 = r3(xs[0] + ws[0] / 2);
+    const ym = r3((r1 + ch + r2) / 2), c3 = r3(xs[2] + cw / 2), c4 = r3(x4 + cw / 2);
     flowArrow(s, c4, ym, c4, r3(r2 - ac), { from: [[c3, r3(r1 + ch + ac)], [c3, ym], [c4, ym]] });
     // 箇条書き
     const a1 = L(id, '筋弛緩薬の使用中は、呼気濃度の下限アラーム（目安 0.7 MAC）')[0];

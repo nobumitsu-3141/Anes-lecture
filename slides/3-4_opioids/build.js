@@ -123,23 +123,29 @@ const bottomOf = s => (s.hasSources ? s.sourceTop - GAP : LAYOUT.body.bottom);
  * 項目間は gap（既定は高さに応じて minGap〜maxGap）。各行は文字列か run 配列。
  * items: [[1行目, 2行目...], ...]
  */
+const padsOf = o => ({
+  padL: o.padL != null ? o.padL : o.pad, padR: o.padR != null ? o.padR : o.pad,
+  padT: o.padTop != null ? o.padTop : o.padY, padB: o.padBottom != null ? o.padBottom : o.padY,
+});
 function itemCardNeedW(o) {
   const ts = o.titleSize, bs = o.bodySize;
+  const { padL, padR } = padsOf(o);
   let need = measure(textOf(o.title), ts);
   for (const lines of o.items) {
     lines.forEach((l, k) => { need = Math.max(need, measure(textOf(l), bs) + (k ? o.indent : 0)); });
   }
-  return need + 2 * o.pad + 0.001;
+  return need + padL + padR + 0.001;
 }
 function itemCard(s, id, o) {
-  const { x, y, w, h, pad, padY, titleSize: ts, bodySize: bs, titleGap: tg, indent } = o;
+  const { x, y, w, h, titleSize: ts, bodySize: bs, titleGap: tg, indent } = o;
+  const { padL, padR, padT, padB } = padsOf(o);
   s.box({ x, y, w, h, fill: o.fill || C.bg, line: o.line, radius: 0.08 });
-  const iw = w - 2 * pad;
+  const iw = w - padL - padR;
   const th = heightFor(1, ts, 0);
-  s.text(o.title, { x: x + pad, y: y + padY, w: iw, h: th, size: ts, bold: true, color: o.titleColor });
+  s.text(o.title, { x: x + padL, y: y + padT, w: iw, h: th, size: ts, bold: true, color: o.titleColor });
   rec(id, o.title);
-  const top = y + padY + th + tg;
-  const avail = y + h - padY - top;
+  const top = y + padT + th + tg;
+  const avail = y + h - padB - top;
   const lh = heightFor(1, bs, 0);
   const itemH = o.items.map(lines => lh + (lines.length > 1 ? heightFor(lines.length - 1, bs, 0) : 0));
   const sum = itemH.reduce((a, v) => a + v, 0);
@@ -150,64 +156,59 @@ function itemCard(s, id, o) {
   }
   let cy = top;
   o.items.forEach((lines, k) => {
-    s.text([lines[0]], { x: x + pad, y: cy, w: iw, h: lh, size: bs, color: C.dark });
+    s.text([lines[0]], { x: x + padL, y: cy, w: iw, h: lh, size: bs, color: C.dark });
     rec(id, lines[0]);
     if (lines.length > 1) {
       const rest = lines.slice(1);
-      s.text(rest, { x: x + pad + indent, y: cy + lh, w: iw - indent, h: heightFor(rest.length, bs, 0), size: bs, color: C.dark });
+      s.text(rest, { x: x + padL + indent, y: cy + lh, w: iw - indent, h: heightFor(rest.length, bs, 0), size: bs, color: C.dark });
       rest.forEach(l => rec(id, l));
     }
     cy += itemH[k] + (k < n - 1 ? g : 0);
   });
-  return { gap: g, used: cy - y + padY };
+  return { gap: g, used: cy - y + padB };
 }
 
-/** 3列カードの共通寸法（本文 22pt。項目の2行目以降は 0.3in 字下げ） */
-const CARD3 = { pad: 0.14, padY: 0.16, titleSize: 24, bodySize: 22, titleGap: 0.16, indent: 0.3, minGap: 0.08, maxGap: 0.34 };
-
 /**
- * 3列カード。列幅は中身の最長行から決め、余りは狭い列から順に配る（水位合わせ）。
- * cards: [{title, titleColor, items}], 下端 bottom
+ * 3列カードの共通寸法（本文 22pt。項目の2行目以降は 0.3in 字下げ）。
+ * カード幅は S3〜S5 共通の (12.23 − 0.24×2) / 3 = 3.92in。全角11字の行（推定 3.76in）を入れるため、
+ * 文字枠は左 0.10in・右 0.05in の余白で置く（推定は実寸より約12%広いので、実際の右の空きは約0.4in）。
  */
+const CARD3 = { padL: 0.10, padR: 0.05, padTop: 0.10, padBottom: 0.16, titleSize: 24, bodySize: 22, titleGap: 0.10,
+  indent: 0.3, minGap: 0.08, maxGap: 0.34 };
+const CARD3_W = (BW - 2 * GAP) / 3;
+
+/** 3列カード（同幅・同位置。S3〜S5 共通）。cards: [{title, titleColor, items}], 下端 bottom */
 function threeCards(s, id, cards, bottom) {
-  const total = BW - 2 * GAP;
-  const need = cards.map(c => itemCardNeedW({ ...CARD3, ...c }));
-  if (need.reduce((a, v) => a + v, 0) > total + 1e-9) {
-    throw new Error(`${id}: 3列カードの必要幅 ${need.map(v => v.toFixed(2)).join(' + ')} > ${total.toFixed(2)}in`);
-  }
-  const fixed = new Set();
-  let W = 0;
-  for (;;) {
-    const free = need.map((v, i) => i).filter(i => !fixed.has(i));
-    const rest = total - [...fixed].reduce((a, i) => a + need[i], 0);
-    W = rest / free.length;
-    const over = free.filter(i => need[i] > W + 1e-9);
-    if (!over.length) break;
-    over.forEach(i => fixed.add(i));
-  }
-  const widths = need.map((v, i) => (fixed.has(i) ? v : W));
-  let x = X0;
   const h = bottom - TOP;
   cards.forEach((c, i) => {
-    itemCard(s, id, { ...CARD3, ...c, x, y: TOP, w: widths[i], h });
-    x += widths[i] + GAP;
+    const o = { ...CARD3, ...c };
+    const need = itemCardNeedW(o);
+    if (need > CARD3_W + 1e-9) throw new Error(`${id} カード「${textOf(c.title)}」: 必要幅 ${need.toFixed(3)}in > ${CARD3_W.toFixed(3)}in`);
+    itemCard(s, id, { ...o, x: X0 + i * (CARD3_W + GAP), y: TOP, w: CARD3_W, h });
   });
 }
 
-/** 強調ボックス（白地・ティールの枠・太字）。lines は1行（文字列/run 配列）または行の配列 */
+/** 強調ボックス（白地・レッドの枠・太字。すぐ報告する危険の目安なのでレッド）。lines は1行（文字列/run 配列）または行の配列 */
 function keyBox(s, id, lines, o) {
   const arr = (Array.isArray(lines) && lines.length && (Array.isArray(lines[0]) || o.multi)) ? lines : [lines];
-  s.box({ x: o.x, y: o.y, w: o.w, h: o.h, fill: C.white, line: { color: C.teal, width: 2.5 }, radius: 0.08,
+  s.box({ x: o.x, y: o.y, w: o.w, h: o.h, fill: C.white, line: { color: o.lineColor || C.red, width: 2.5 }, radius: 0.08,
     text: arr, size: o.size || 28, bold: true, color: C.dark, align: o.align || 'center' });
   arr.forEach(l => rec(id, l));
 }
 
-/** 箇条書き（置いた文字列を記録し、下端を確かめる） */
+/**
+ * 箇条書き（置いた文字列を記録し、下端を確かめる）。
+ * o.center=true なら、枠を y〜bottom いっぱいに取り、縦中央揃えにする（描画環境の行高に依らず上下の空きが等しくなる）。
+ */
 function bulletList(s, id, items, o) {
   items.forEach(t => rec(id, t));
-  s.bullets(items, { y: o.y, size: o.size, gap: o.gap });
   const bh = heightFor(items.length, o.size, o.gap);
   if (o.y + bh > o.bottom + 1e-6) throw new Error(`${id}: 箇条書きが出典に近すぎます（下端 ${(o.y + bh).toFixed(2)}in > ${o.bottom.toFixed(2)}in）`);
+  if (o.center) {
+    s.bullets(items, { y: o.y, h: o.bottom - o.y, size: o.size, gap: o.gap, valign: 'middle' });
+    return o.bottom;
+  }
+  s.bullets(items, { y: o.y, size: o.size, gap: o.gap });
   return o.y + bh;
 }
 
@@ -232,7 +233,7 @@ async function main() {
     const s = contentSlide(deck, id, 0);
     const cw = (BW - GAP) / 2;
     const geo = { y: TOP, w: cw, h: bottomOf(s) - TOP, pad: 0.18, padY: 0.22, titleSize: 28, bodySize: 24, titleGap: 0.26, indent: 0.36, minGap: 0.2, maxGap: 0.4 };
-    const L = itemCard(s, id, {
+    itemCard(s, id, {
       ...geo, x: X0, title: '作用（μ 受容体）', titleColor: C.blue,
       items: [
         ['鎮痛'],
@@ -241,10 +242,12 @@ async function main() {
         ['咳の抑制'],
       ],
     });
+    // 右カードは4項目とも1行なので、左カードと同じ間隔だと下が空く → 自分の高さで項目間隔を決める（上限 0.4in）。
+    // 「呼吸抑制」は太字のみ: 見出し「副作用」のバーミリオンの直下に近い赤を並べない（警告色を2種類に見せない）
     itemCard(s, id, {
-      ...geo, x: X0 + cw + GAP, title: '副作用', titleColor: C.vermilion, gap: L.gap,
+      ...geo, x: X0 + cw + GAP, title: '副作用', titleColor: C.vermilion,
       items: [
-        [[danger('呼吸抑制'), '：呼吸数↓、CO2 応答↓']],
+        [[b('呼吸抑制'), '：呼吸数↓、CO2 応答↓']],
         ['徐脈・血圧低下'],
         ['悪心嘔吐、掻痒、尿閉、便秘'],
         ['筋硬直・声門閉鎖（急速投与）'],
@@ -262,7 +265,7 @@ async function main() {
         items: [
           [['導入：', b('1〜3 µg/kg'), ' 静注']],
           ['術中の追加：', [b('25〜50 µg'), ' ずつ']],
-          [['術後：', b('25〜50 µg'), ' ずつ、'], '反応を見て'],
+          ['術後：', [b('25〜50 µg'), ' ずつ、'], '反応を見て'],
         ],
       },
       {
@@ -326,7 +329,7 @@ async function main() {
         title: '用量（目安）', titleColor: C.blue,
         items: [
           [['静注：', b('2〜5 mg'), ' ずつ、'], '反応を見て'],
-          ['くも膜下：', [b('0.1〜0.2 mg')]],
+          [['くも膜下：', b('0.1〜0.2 mg')]],
           ['PCA の設定は', '施設の方式'],
         ],
       },
@@ -364,11 +367,13 @@ async function main() {
     ];
     head.forEach(t => rec(id, t));
     body.forEach(([a, c]) => { rec(id, a); c.forEach(t => rec(id, t)); });
-    // 行の高さ: 1行 0.556in、2行 1.06in（24pt・上下余白 2pt）。出典2行の上 0.24in まで
+    // 行の高さ: 1行 0.56in、2行 1.04in（24pt の実機メイリオ 1行 0.50in。セルの上下余白を 1pt に詰めて行高との差を余裕に回す。
+    // pptxgenjs は margin[0] が 1 未満だとインチと解釈するので 0 にはしない）。
+    // 下端 6.25in（出典2行の上 0.24in = 6.26in まで）。見出し行も本文と同じ左揃え
     const c1 = 2.9;
-    const rowH = [0.556, 1.06, 0.556, 0.556, 0.556, 0.556, 0.556];
+    const rowH = [0.56, 1.04, 0.56, 0.56, 0.56, 0.56, 0.56];
     const t = s.table([head, ...body.map(([a, c]) => [{ text: a, bold: true, fill: C.bg }, c.join('\n')])], {
-      x: X0, y: TOP, colW: [c1, BW - c1], size: 24, rowH, margin: [2, 10, 2, 10],
+      x: X0, y: TOP, colW: [c1, BW - c1], size: 24, rowH, margin: [1, 10, 1, 10], headAlign: 'left',
     });
     if (t.y + t.h > bottomOf(s) + 1e-6) throw new Error(`S6: 表が出典に近すぎます（下端 ${(t.y + t.h).toFixed(2)}in）`);
   }
@@ -402,7 +407,7 @@ async function main() {
       '紛失・破損は、すぐに報告して届け出る',
       'ケタミンも麻薬。ミダゾラム・レミマゾラムは向精神薬',
       '施錠した保管庫から、必要な分だけ',
-    ], { y: 1.95, size: 28, gap: 26, bottom: bottomOf(s) });
+    ], { y: TOP, size: 28, gap: 28, bottom: bottomOf(s), center: true });
   }
 
   // ===== S9 まとめ（箇条書き5行） =====
@@ -415,7 +420,7 @@ async function main() {
       [drug('レミフェンタニル'), '：数分で切れる。止める前に次の鎮痛を'],
       [drug('モルヒネ'), '：遅く長い。腎不全では避ける'],
       '術後は呼吸数を数える。ナロキソンの場所を知る',
-    ], { y: 1.95, size: 28, gap: 20, bottom: bottomOf(s) });
+    ], { y: TOP, size: 28, gap: 24, bottom: bottomOf(s), center: true });
   }
 
   checkOnSlide();
