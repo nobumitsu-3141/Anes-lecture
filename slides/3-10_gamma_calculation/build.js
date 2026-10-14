@@ -181,6 +181,32 @@ function bulletList(s, id, items, o) {
   return o.y + bh;
 }
 
+/**
+ * 箇条書き（1項目1行）を、行頭記号と本文を別の枠にして置く。見た目は s.bullets と同じ（記号＋字下げ 1.15em）。
+ * 全角の開き括弧（『「（ など）は字面が字送りの右半分にあり、行頭が他の行より右にずれて見えるので、
+ * その行だけ本文の枠を 0.45em 左に寄せて行頭をそろえる。pitch は行の間隔（in）。
+ */
+function alignedBullets(s, id, items, o) {
+  const size = o.size;
+  const ind = Math.round(size * 1.15) / 72;
+  const lh = heightFor(1, size, 0);
+  items.forEach((t, i) => {
+    const y = r3(o.y + i * o.pitch);
+    const txt = textOf(t);
+    rec(id, t);
+    const shift = /^[「『（【〔［]/.test(txt) ? (size / 72) * 0.45 : 0;
+    const x = r3(o.x + ind - shift);
+    const w = r3(o.x + o.w - x);
+    safeFit(id, t, size, w);
+    s.text(['•'], { x: o.x, y, w: r3(ind), h: lh, size, color: C.dark });
+    s.text([t], { x, y, w, h: lh, size, color: C.dark });
+  });
+  const bottom = o.y + (items.length - 1) * o.pitch + lh;
+  if (bottom > bottomOf(s) + 1e-6) throw new Error(`${id}: 箇条書きが出典に近すぎます（下端 ${r3(bottom)}in > ${r3(bottomOf(s))}in）`);
+  console.log(`  ${id}: aligned bullets ${size}pt pitch ${o.pitch} → bottom ${r3(bottom)} (limit ${r3(bottomOf(s))})`);
+  return bottom;
+}
+
 /** 文字入りの箱（1図形）。文言を記録し、実機の余裕を検査する */
 function textBox(s, id, line, o) {
   rec(id, line);
@@ -191,15 +217,14 @@ function textBox(s, id, line, o) {
 
 // ---------------------------------------------------------------------------
 // 見出し＋項目のカード（各項目は1〜数行。項目の間は細い区切り線）。文字はすべて箱の内側。
+// 左右2枚は「段」をそろえる: i 番目の項目の枠の高さは、2枚のうち行数の多い方に合わせ、
+// 行数の少ない方はその枠の上下中央に置く（区切り線の位置が左右で一致する）。
 // ---------------------------------------------------------------------------
 const CARD = { pad: 0.16, titleSize: 28, size: 26, titleGap: 0.14, lineGap: 1, minGap: 0.2, maxGap: 0.5 };
-function cardItemsH(c) {
-  return c.items.reduce((a, lines) => a + heightFor(lines.length, CARD.size, CARD.lineGap), 0);
-}
 function cardHeadH() {
   return CARD.pad + heightFor(1, CARD.titleSize, 0) + CARD.titleGap;
 }
-function itemCard(s, id, c, x, y, w, h, gap) {
+function itemCard(s, id, c, x, y, w, h, gap, rowH) {
   const pad = CARD.pad;
   s.box({ x, y, w, h, fill: C.bg, radius: 0.08 });
   const iw = r3(w - 2 * pad);
@@ -212,9 +237,9 @@ function itemCard(s, id, c, x, y, w, h, gap) {
   c.items.forEach((lines, i) => {
     const ih = heightFor(lines.length, CARD.size, CARD.lineGap);
     lines.forEach(l => safeFit(id, l, CARD.size, iw));
-    s.text(lines, { x: r3(x + pad), y: r3(cy), w: iw, h: ih, size: CARD.size, gap: CARD.lineGap, color: C.dark });
+    s.text(lines, { x: r3(x + pad), y: r3(cy + (rowH[i] - ih) / 2), w: iw, h: ih, size: CARD.size, gap: CARD.lineGap, color: C.dark });
     lines.forEach(l => rec(id, l));
-    cy += ih;
+    cy += rowH[i];
     if (i < c.items.length - 1) {
       s.hline({ x: r3(x + pad), y: r3(cy + gap / 2), w: iw, color: C.border, width: 1 });
       cy += gap;
@@ -222,21 +247,20 @@ function itemCard(s, id, c, x, y, w, h, gap) {
   });
   if (cy > y + h - pad + 1e-6) throw new Error(`${id} カード「${c.title}」: 高さ不足（必要 ${r3(cy + pad - y)}in > ${h}in）`);
 }
-/** 左右2枚のカード（等幅）。高さは本文の下端まで、項目の間隔は2枚で共通 */
+/** 左右2枚のカード（等幅）。高さは本文の下端まで。項目の段（枠の高さ・間隔）は2枚で共通 */
 function twoCards(s, id, cards) {
   const w = r3((BW - GAP) / 2);
   const h = r3(bottomOf(s) - TOP);
-  let gap = CARD.maxGap;
-  cards.forEach(c => {
-    const n = c.items.length;
-    if (n < 2) return;
-    const avail = h - cardHeadH() - CARD.pad - cardItemsH(c);
-    gap = Math.min(gap, avail / (n - 1));
-  });
-  if (gap < CARD.minGap - 1e-6) throw new Error(`${id}: カードの高さが足りません（項目間隔 ${r3(gap)}in < ${CARD.minGap}in）`);
+  const n = cards[0].items.length;
+  if (cards.some(c => c.items.length !== n)) throw new Error(`${id}: 左右のカードの項目数が違います（段をそろえられません）`);
+  const rowH = Array.from({ length: n }, (_, i) =>
+    Math.max(...cards.map(c => heightFor(c.items[i].length, CARD.size, CARD.lineGap))));
+  const itemsH = rowH.reduce((a, b) => a + b, 0);
+  let gap = n < 2 ? 0 : Math.min(CARD.maxGap, (h - cardHeadH() - CARD.pad - itemsH) / (n - 1));
+  if (n >= 2 && gap < CARD.minGap - 1e-6) throw new Error(`${id}: カードの高さが足りません（項目間隔 ${r3(gap)}in < ${CARD.minGap}in）`);
   gap = Math.floor(gap * 100) / 100;
-  cards.forEach((c, i) => itemCard(s, id, c, r3(X0 + i * (w + GAP)), TOP, w, h, gap));
-  console.log(`  ${id}: 2 cards w=${w} h=${h} gap=${gap}`);
+  cards.forEach((c, i) => itemCard(s, id, c, r3(X0 + i * (w + GAP)), TOP, w, h, gap, rowH));
+  console.log(`  ${id}: 2 cards w=${w} h=${h} gap=${gap} rows=${rowH.join('/')}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,7 +332,9 @@ async function main() {
     const colW = [3.45, 6.0, 2.78];
     const m = [4, 10, 4, 12];
     body.forEach(r => r.forEach((t, ci) => safeFit(id, t, size, colW[ci] - (m[1] + m[3]) / 72)));
-    const rows = [head].concat(body.map(([drug, dil, conc]) => [
+    // 見出しの揃えは本文の列に合わせる（薬・希釈は左、濃度は中央）
+    const headRow = head.map((t, ci) => ({ text: t, align: ci < 2 ? 'left' : 'center' }));
+    const rows = [headRow].concat(body.map(([drug, dil, conc]) => [
       { text: drug, bold: true },
       dil,
       { text: conc, bold: true, color: KEY, align: 'center' },
@@ -329,12 +355,15 @@ async function main() {
     ];
     const size = 24, lgap = 6;
     const bottom = bottomOf(s);
-    const ch = r3((bottom - TOP - 2 * GAP) / 3);
+    // カードの間隔は 0.3in（下限 0.24in より広く取る）。高さは 1.35in を上限に、本文の下端までに収める
+    const cgap = 0.3;
+    const ch = r3(Math.min(1.35, (bottom - TOP - 2 * cgap) / 3));
+    if (ch < heightFor(2, size, lgap) + 0.2) throw new Error(`${id}: カードの高さが足りません（${ch}in）`);
     const chipW = 1.05, chipH = 0.72;
     const tx = r3(X0 + 0.18 + chipW + 0.24);
     const tw = r3(XR - 0.18 - tx);
     qs.forEach((lines, i) => {
-      const y = r3(TOP + i * (ch + GAP));
+      const y = r3(TOP + i * (ch + cgap));
       s.box({ x: X0, y, w: BW, h: ch, fill: C.bg, radius: 0.08 });
       s.box({
         x: r3(X0 + 0.18), y: r3(y + (ch - chipH) / 2), w: chipW, h: chipH, fill: KEY, radius: 0.08,
@@ -344,39 +373,47 @@ async function main() {
       lines.forEach(l => { rec(id, l); safeFit(id, l, size, tw); });
       s.text(lines, { x: tx, y: r3(y + (ch - th) / 2), w: tw, h: th, size, gap: lgap, color: C.dark });
     });
-    console.log(`  ${id}: card h=${ch} text w=${tw}`);
+    console.log(`  ${id}: card h=${ch} gap=${cgap} bottom=${r3(TOP + 3 * ch + 2 * cgap)} text w=${tw}`);
   }
 
   // ===== S6 解答 1：レミフェンタニル（途中式 4 行＋答えの強調） =====
+  // 4 行を右の角括弧でひとまとめにし、括弧の中央から答えの箱へ矢印。答えの箱は 4 行の上下中央にそろえる。
+  // 答えの強調は箱だけにする（4 行目の「18 mL/時」は本文色のまま。箱と二重に見せない）。
   {
     const id = 'S6';
     const s = contentSlide(deck, id, 2);
-    const size = 28;
+    // 26pt（S7・S8 のカードの途中式と同じ）。28pt では最長の行の右端（× ÷ が全角幅で描かれた場合）が
+    // 9.0in 近くまで来て、括弧・矢印・答えの箱が右に入らない
+    const size = 26;
     const steps = [
       mark('濃度：2 mg × 1,000 ÷ 40 mL = 50 μg/mL', ['濃度：', KEY]),
       mark('1 分あたり：0.25 × 60 kg = 15 μg/分', ['1 分あたり：', KEY]),
       mark('1 時間あたり：15 × 60 = 900 μg/時', ['1 時間あたり：', KEY]),
-      mark('ポンプ：900 ÷ 50 = 18 mL/時', ['ポンプ：', KEY], ['18 mL/時', ANS]),
+      mark('ポンプ：900 ÷ 50 = 18 mL/時', ['ポンプ：', KEY]),
     ];
-    const lw = 8.75, lh = heightFor(1, size, 0), pitch = 1.08;
-    const y0 = 2.05;
-    let lastY = 0;
+    const lh = heightFor(1, size, 0), pitch = 1.02;
+    const y0 = 2.2;
+    // 行の幅は最長の行（実機の余裕込み）に合わせる
+    const need = Math.max(...steps.map(l => safeFit(id, l, size, 9.0)));
+    const lw = r3(need / 0.98 + 0.02);
     steps.forEach((l, i) => {
       rec(id, l);
-      safeFit(id, l, size, lw);
-      lastY = r3(y0 + i * pitch);
-      s.text([l], { x: X0, y: lastY, w: lw, h: lh, size, color: C.dark });
+      s.text([l], { x: X0, y: r3(y0 + i * pitch), w: lw, h: lh, size, color: C.dark });
     });
-    // 答え（強調）: 4 行目から矢印で
-    const cy = lastY + lh / 2;
-    const bw = 3.3, bh = 1.45, bx = r3(XR - bw);
-    const endX = X0 + measure(textOf(steps[3]), size) + 0.3;
-    s.arrow({ x1: r3(endX), y1: r3(cy), x2: r3(bx - 0.12), y2: r3(cy), color: C.chipText, width: 3 });
+    // 角括弧（4 行の文字の上端〜下端）。最長の行の右端（実機の余裕込み）から 0.24in 以上、文字枠の外に置く
+    const top = y0 + 0.06, bot = y0 + 3 * pitch + lh - 0.06, mid = (top + bot) / 2;
+    const tick = 0.12;
+    const kx = r3(Math.max(X0 + need + GAP, X0 + lw + 0.06) + tick);
+    s.polyline([[kx - tick, r3(top)], [kx, r3(top)], [kx, r3(bot)], [kx - tick, r3(bot)]], { color: C.chipText, width: 2.5 });
+    // 答え（強調）
+    const bw = 3.3, bh = 1.5, bx = r3(XR - bw);
+    if (bx - kx < 0.45) throw new Error(`${id}: 括弧と答えの箱の間が狭すぎます（${r3(bx - kx)}in）`);
+    s.arrow({ x1: kx, y1: r3(mid), x2: r3(bx - 0.1), y2: r3(mid), color: C.chipText, width: 3 });
     textBox(s, id, '18 mL/時', {
-      x: bx, y: r3(cy - bh / 2), w: bw, h: bh, fill: C.white, line: { color: ANS, width: 3 }, radius: 0.1,
+      x: bx, y: r3(mid - bh / 2), w: bw, h: bh, fill: C.white, line: { color: ANS, width: 3 }, radius: 0.1,
       size: 48, bold: true, color: ANS,
     });
-    console.log(`  ${id}: answer box y=${r3(cy - bh / 2)}..${r3(cy + bh / 2)} arrow ${r3(endX)}→${r3(bx - 0.12)}`);
+    console.log(`  ${id}: lines w=${lw} bracket x=${kx} y=${r3(top)}..${r3(bot)} answer box x=${bx} y=${r3(mid - bh / 2)}..${r3(mid + bh / 2)}`);
   }
 
   // ===== S7 解答 2：ノルアドレナリン（左右2枚のカード） =====
@@ -421,7 +458,8 @@ async function main() {
         items: [
           ['10 × 70 kg = 700 μg'],
           [mark('700 ÷ 1,000 = 0.7 mL', ['0.7 mL', ANS])],
-          ['ゆっくり静注'],
+          // 注意点（投与のしかた）なので、危険色の太字にして下段（左の答えの段）に置く
+          [[{ text: 'ゆっくり静注', color: DANGER, bold: true }]],
         ],
       },
     ]);
@@ -431,12 +469,14 @@ async function main() {
   {
     const id = 'S9';
     const s = contentSlide(deck, id, 3);
-    const bb = bulletList(s, id, [
+    // 3 行目は全角の『 で始まるので、行頭記号と本文を別の枠にして本文の行頭をそろえる（alignedBullets）。
+    // 行の間隔は s.bullets（26pt・段落後 22pt）の実機の行送りと同じ 0.85in
+    const bb = alignedBullets(s, id, [
       '答えの桁を疑う：1.5 と 15 と 150 のどれが『普通』か',
       '単位を書いて追う：μg/分 → μg/時 → mL/時',
       mark('『体重 × 3 mg を 50 mL に』なら 1 mL/時 = 1 γ', ['1 mL/時 = 1 γ', KEY]),
       '院内の標準希釈表と、2 人での確認',
-    ], { y: 1.98, size: 26, gap: 22 });
+    ], { x: X0, y: 1.98, w: 12.2, size: 26, pitch: 0.85 });
     const bh = 1.1;
     const by = r3(bottomOf(s) - bh);
     if (by < bb + GAP - 1e-6) throw new Error(`${id}: 強調ボックスが箇条書きに近すぎます`);
@@ -450,12 +490,13 @@ async function main() {
     const id = 'S10';
     const s = contentSlide(deck, id, 4);
     bulletList(s, id, [
-      mark('mg と μg（1,000 倍）、分と時（60 倍）', ['1,000 倍', ANS], ['60 倍', ANS]),
+      // 見出し語（取り違える 2 組の単位）を太字にして、2〜5 行目と形をそろえる
+      mark('mg と μg（1,000 倍）、分と時（60 倍）', ['mg と μg', null], ['1,000 倍', ANS], ['分と時', null], ['60 倍', ANS]),
       mark('総量：薬液の体積を入れ忘れる', ['総量：', null]),
       mark('ポンプの設定単位（mL/時か、γか、mg/時か）', ['ポンプの設定単位', null]),
       mark('ライン内の死腔：流量が少ないと届くまで時間がかかる', ['ライン内の死腔：', null]),
       mark('体重：実測か推定か、肥満では何を使うか（→ 3-1）', ['体重：', null]),
-    ], { y: 1.98, size: 28, gap: 20 });
+    ], { y: 2.0, size: 28, gap: 22 });
   }
 
   // ===== S11 まとめ（箇条書き5行） =====

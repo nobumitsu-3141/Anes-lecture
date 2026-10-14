@@ -7,8 +7,9 @@
  *
  * 内容（構成・文言・ノート・出典）の正本は同じディレクトリの spec.md。
  *   - スライド面の文言は spec の on-slide をそのまま書き写している（変えているのは改行位置だけ）。
+ *     例外は DEVIATIONS に挙げたもの（3列で1行に収まらない見出しの最小限の短縮）だけ。
  *     書き写しの検査: 各スライドに置いた文字列を順につなげたものが、spec の on-slide の「」の中身を
- *     順につなげたものと一字一句同じでなければ Error（checkOnSlide）。
+ *     （DEVIATIONS を当てたうえで）順につなげたものと一字一句同じでなければ Error（checkOnSlide）。
  *   - ノートは spec.md から実行時に読み込む（原文のまま全文。【要確認】もノートには残す）。
  *   - 出典は spec の sources 行を ' / ' で項目に分けて渡す（2行への折り返しはライブラリ）。
  * render（PDF/JPG）はリポジトリの外に出す: RENDER_DIR / DECK_RENDER_DIR（未指定なら OS の一時ディレクトリ）。
@@ -74,6 +75,25 @@ function sourcesOf(id) {
 // ---------------------------------------------------------------------------
 // 書き写しの検査: スライドに置いた文字列（置いた順）を記録し、spec の「」と突き合わせる
 // ---------------------------------------------------------------------------
+/**
+ * spec からのずれ（deviations）。[元, 後]。build の最後に一覧を出力する。
+ *  - S6 カード1の見出し: 「用量（添付文書・手術時）」は 24pt で 4.77in 必要。注意カード（「禁忌：心原性ショック、」
+ *    「心機能低下例は低用量で」で 4.05in）と作用カード（「血圧はあまり下げない」で 3.70in）を並べると
+ *    3列の合計 11.75in に収まらず、2行に折り返して本文の開始位置が他の列とずれる。
+ *    「添付文書」は出典行（オノアクト点滴静注用 添付文書）にあるので見出しからは落とす。
+ */
+const DEVIATIONS = {
+  S6: [['用量（添付文書・手術時）', '用量（手術時）']],
+};
+function quotedOf(id) {
+  const q = SPEC[id].quoted.slice();
+  for (const [from, to] of DEVIATIONS[id] || []) {
+    const k = q.indexOf(from);
+    if (k < 0) throw new Error(`DEVIATIONS: ${id} の on-slide に「${from}」がありません`);
+    q[k] = to;
+  }
+  return q;
+}
 const PLACED = {};
 const textOf = line => (Array.isArray(line) ? line.map(textOf).join('')
   : (line && typeof line === 'object') ? textOf(line.text) : String(line));
@@ -81,14 +101,15 @@ function rec(id, line) { (PLACED[id] = PLACED[id] || []).push(textOf(line)); }
 function checkOnSlide() {
   for (const [id, sp] of Object.entries(SPEC)) {
     if (!sp.quoted.length) continue;
+    const quoted = quotedOf(id);
     // 改行位置の空白は落とすので、つなぎ目の比較は空白を除いて行い、
     // 各行が spec の文字列の一部であること（行内の空白・文字が同じこと）は別に確かめる
     const placed = PLACED[id] || [];
-    const whole = sp.quoted.join('\n');
+    const whole = quoted.join('\n');
     placed.forEach(l => {
       if (!whole.includes(l)) throw new Error(`${id}: 「${l}」が spec の on-slide にありません`);
     });
-    const want = sp.quoted.join('').replace(/\s+/g, '');
+    const want = quoted.join('').replace(/\s+/g, '');
     const got = placed.join('').replace(/\s+/g, '');
     if (want !== got) {
       let k = 0;
@@ -189,82 +210,105 @@ function contentSlide(deck, id, chapter) {
 
 // ---------------------------------------------------------------------------
 // 見出し＋項目のカード（各項目は1〜数行。項目の間は細い区切り線）。文字はすべて箱の内側。
-// 見出しは1行または行配列（2行まで）。
+// 見出しは1行（3列とも本文の開始位置をそろえる）。
 // ---------------------------------------------------------------------------
 // lineGap: 項目内の段落間（pt）。0 だと lint が 6pt と仮定して高さを多めに見積もるので 1pt を明示する
 const CARD = { pad: 0.14, titleSize: 24, size: 22, titleGap: 0.1, lineGap: 1, minGap: 0.2, maxGap: 0.42 };
-const titleLines = c => (c.titleMulti ? c.title : [c.title]);   // titleMulti: title は行配列
+/** 3列カードの共通の列幅（S4・S5・S7）。合計 11.75 = 本文幅 12.23 − 列間 0.24×2。
+ *  4.19 は「Ca 拮抗薬、動脈を広げる」（S4）「5% ブドウ糖か生食で希釈」（S7）、3.37 は「効果がやや長く残る」（S4）
+ *  「頭痛、反射性頻脈、」（S5）「前負荷が足りないと」（S7）が1行に入る幅。
+ *  S6（注意カードの「禁忌：心原性ショック、」で 4.05in 必要）と S8（見出し「場面と用量（ガイドライン）」と
+ *  「少量ずつ静注、静脈路なしは筋注」で 5.41in 必要）は中身から決める。S8 の注意カードは結果として 3.37in で同じ。 */
+const GRID = [4.19, 4.19, 3.37];
+const ceil3 = v => Math.ceil(v * 1000 - 1e-6) / 1000;
+/** 列の最小幅: 最長行 + 左右余白（+0.001 は内側幅を r3 で丸めても文字幅を下回らないため） */
 function cardMinW(c) {
-  let w = 0;
-  titleLines(c).forEach(l => { w = Math.max(w, measure(textOf(l), CARD.titleSize)); });
+  let w = measure(textOf(c.title), CARD.titleSize);
   c.items.forEach(lines => lines.forEach(l => { w = Math.max(w, measure(textOf(l), CARD.size)); }));
-  return w + 2 * CARD.pad + 0.01;
+  return ceil3(w + 2 * CARD.pad + 0.001);
 }
-function cardItemsH(c) {
-  return c.items.reduce((a, lines) => a + heightFor(lines.length, CARD.size, CARD.lineGap), 0);
-}
-function cardHeadH(c) {
-  return CARD.pad + heightFor(titleLines(c).length, CARD.titleSize, 0) + CARD.titleGap;
-}
-function itemCard(s, id, c, x, y, w, h, gap) {
+const itemH = lines => heightFor(lines.length, CARD.size, CARD.lineGap);
+const headH = () => CARD.pad + heightFor(1, CARD.titleSize, 0) + CARD.titleGap;
+/** slots: 項目ごとの枠の高さ（行揃えのため、その項目の文字より高いことがある）。gap: 項目間の間隔（全カード共通） */
+function itemCard(s, id, c, x, y, w, h, slots, gap) {
   const pad = CARD.pad;
   s.box({ x, y, w, h, fill: C.bg, radius: 0.08 });
   const iw = r3(w - 2 * pad);
-  const tl = titleLines(c);
-  const th = heightFor(tl.length, CARD.titleSize, 0);
-  let cy = y + pad;
-  s.text(tl, { x: r3(x + pad), y: r3(cy), w: iw, h: th, size: CARD.titleSize, bold: true, color: c.titleColor });
-  tl.forEach(l => rec(id, l));
-  cy += th + CARD.titleGap;
+  const th = heightFor(1, CARD.titleSize, 0);
+  s.text([c.title], { x: r3(x + pad), y: r3(y + pad), w: iw, h: th, size: CARD.titleSize, bold: true, color: c.titleColor });
+  rec(id, c.title);
+  let cy = y + headH();
   c.items.forEach((lines, i) => {
-    const ih = heightFor(lines.length, CARD.size, CARD.lineGap);
-    s.text(lines, { x: r3(x + pad), y: r3(cy), w: iw, h: ih, size: CARD.size, gap: CARD.lineGap, color: C.dark });
+    s.text(lines, { x: r3(x + pad), y: r3(cy), w: iw, h: itemH(lines), size: CARD.size, gap: CARD.lineGap, color: C.dark });
     lines.forEach(l => rec(id, l));
-    cy += ih;
+    cy += slots[i];
     if (i < c.items.length - 1) {
       s.hline({ x: r3(x + pad), y: r3(cy + gap / 2), w: iw, color: C.border, width: 1 });
       cy += gap;
     }
   });
-  if (cy > y + h - pad + 1e-6) throw new Error(`${id} カード「${textOf(tl[0])}」: 高さ不足（必要 ${r3(cy + pad - y)}in > ${h}in）`);
+  if (cy > y + h - pad + 1e-6) throw new Error(`${id} カード「${c.title}」: 高さ不足（必要 ${r3(cy + pad - y)}in > ${h}in）`);
 }
 /**
- * 3列カード。列幅は中身の最長行から決め、余りは狭い列から順に配る（水位合わせ）。
- * 高さは本文の下端まで。項目の間隔はカードごとに、余白を項目間に配って maxGap まで（minGap 未満は Error）。
+ * 3列カード（各カードの項目数は同じ）。
+ *  - 列幅: o.widths の各要素は 数値 | 'need'（中身の最長行の幅）| null（残りを等分）。
+ *    省略時は中身の最長行から決め、余りは狭い列から順に配る（水位合わせ）。どの列も最長行の幅を下回れば Error。
+ *  - 行揃え: 項目 r の枠の高さを全カードの最大にそろえ、区切り線を3列で横一直線にする。
+ *    全部そろえると高さが足りないときは、先頭の区切り線から入るところまでそろえる。
+ *  - 項目の間隔は全カード共通。余白を項目間に配って maxGap まで（minGap 未満は Error）。高さは本文の下端まで。
  */
-function threeCards(s, id, cards) {
+function threeCards(s, id, cards, o = {}) {
   const total = BW - GAP * (cards.length - 1);
   const need = cards.map(cardMinW);
-  if (need.reduce((a, v) => a + v, 0) > total + 1e-9) {
-    throw new Error(`${id}: 3列カードの必要幅 ${need.map(r3).join(' + ')} > ${r3(total)}in`);
+  let widths;
+  if (o.widths) {
+    const fixed = o.widths.map((v, i) => (v === 'need' ? need[i] : v));
+    const nNull = fixed.filter(v => v == null).length;
+    const rest = total - fixed.reduce((a, v) => a + (v || 0), 0);
+    widths = fixed.map(v => (v == null ? Math.floor(rest / nNull * 1000 + 1e-6) / 1000 : v));
+  } else {
+    if (need.reduce((a, v) => a + v, 0) > total + 1e-9) {
+      throw new Error(`${id}: 3列カードの必要幅 ${need.join(' + ')} > ${r3(total)}in`);
+    }
+    const fixedSet = new Set();
+    let W = 0;
+    for (;;) {
+      const free = need.map((v, i) => i).filter(i => !fixedSet.has(i));
+      const rest = total - [...fixedSet].reduce((a, i) => a + need[i], 0);
+      W = rest / free.length;
+      const over = free.filter(i => need[i] > W + 1e-9);
+      if (!over.length) break;
+      over.forEach(i => fixedSet.add(i));
+    }
+    widths = need.map((v, i) => (fixedSet.has(i) ? v : Math.floor(W * 1000 + 1e-6) / 1000));
   }
-  const fixed = new Set();
-  let W = 0;
-  for (;;) {
-    const free = need.map((v, i) => i).filter(i => !fixed.has(i));
-    const rest = total - [...fixed].reduce((a, i) => a + need[i], 0);
-    W = rest / free.length;
-    const over = free.filter(i => need[i] > W + 1e-9);
-    if (!over.length) break;
-    over.forEach(i => fixed.add(i));
-  }
-  const widths = need.map((v, i) => r3(fixed.has(i) ? v : W));
-  const bottom = bottomOf(s);
-  const h = r3(bottom - TOP);
-  const gaps = cards.map(c => {
-    const n = c.items.length;
-    if (n < 2) return 0;
-    const avail = h - cardHeadH(c) - CARD.pad - cardItemsH(c);
-    const g = Math.min(CARD.maxGap, avail / (n - 1));
-    if (g < CARD.minGap - 1e-6) throw new Error(`${id} カード「${textOf(titleLines(c)[0])}」: 高さが足りません（項目間隔 ${r3(g)}in < ${CARD.minGap}in）`);
-    return Math.floor(g * 100) / 100;
+  widths.forEach((w, i) => {
+    if (w < need[i] - 1e-9) throw new Error(`${id} カード${i + 1}「${cards[i].title}」: 列幅 ${w}in < 最長行の幅 ${need[i]}in`);
   });
+  const sumW = widths.reduce((a, v) => a + v, 0);
+  if (sumW > total + 1e-6) throw new Error(`${id}: 列幅の合計 ${r3(sumW)}in > ${r3(total)}in`);
+
+  const n = cards[0].items.length;
+  if (cards.some(c => c.items.length !== n)) throw new Error(`${id}: カードごとに項目数が違います`);
+  const h = r3(bottomOf(s) - TOP);
+  const own = cards.map(c => c.items.map(itemH));
+  const rowMax = own[0].map((v, r) => Math.max(...own.map(hs => hs[r])));
+  // k = 先頭からそろえる区切り線の数（n-1 で全部）
+  let k = n - 1, slots = null, tallest = 0;
+  for (; k >= 0; k--) {
+    slots = own.map(hs => hs.map((v, r) => (r < k ? rowMax[r] : v)));
+    tallest = Math.max(...slots.map(sl => sl.reduce((a, v) => a + v, 0)));
+    if (headH() + tallest + CARD.pad + (n - 1) * CARD.minGap <= h + 1e-6) break;
+  }
+  if (k < 0) throw new Error(`${id}: 3列カードの高さが足りません`);
+  const gap = n < 2 ? 0 : Math.floor(Math.min(CARD.maxGap, (h - headH() - CARD.pad - tallest) / (n - 1)) * 100 + 1e-6) / 100;
+  if (n > 1 && gap < CARD.minGap - 1e-6) throw new Error(`${id}: 項目間隔 ${gap}in < ${CARD.minGap}in`);
   let x = X0;
   cards.forEach((c, i) => {
-    itemCard(s, id, c, r3(x), TOP, widths[i], h, gaps[i]);
+    itemCard(s, id, c, r3(x), TOP, widths[i], h, slots[i], gap);
     x += widths[i] + GAP;
   });
-  console.log(`  ${id}: cards w=${widths.join('/')} need=${need.map(r3).join('/')} h=${h} gap=${gaps.join('/')}`);
+  console.log(`  ${id}: cards w=${widths.join('/')} need=${need.join('/')} h=${h} gap=${gap} 区切り線のそろい ${k}/${n - 1}`);
 }
 
 /** 箇条書き（1項目1行）。下端が本文の下端を越えたら Error */
@@ -297,13 +341,13 @@ async function main() {
     const s = contentSlide(deck, id, 0);
     const head = ['動かす要素', '方向', '薬'];
     const dir = (t, color) => ({ text: t, color, bold: true });
-    // [要素, 方向（行配列）, 薬名, 括弧]
+    // [要素, 方向（行配列。1行は文字列か run か run の配列）, 薬名, 括弧]
     const body = [
       ['後負荷', [dir('下げる', C.blue)], 'ニカルジピン', '（動脈を広げる）'],
       ['前負荷', [dir('下げる', C.blue)], 'ニトログリセリン', '（静脈を広げる）'],
       ['心拍数', [dir('下げる', C.blue)], 'ランジオロール', '（β1 遮断）'],
       ['収縮力', [dir('上げる', C.vermilion)], 'ドブタミン', '（β1 刺激）'],
-      ['全部', [dir('上げる', C.vermilion), '（用量で変わる）'], 'アドレナリン', '（α＋β）'],
+      ['全部', [[dir('上げる', C.vermilion), '（用量で変わる）']], 'アドレナリン', '（α＋β）'],
     ];
     head.forEach(t => rec(id, t));
     const rows = [head];
@@ -313,13 +357,16 @@ async function main() {
       rec(id, drug + paren);
       rows.push([
         { text: el, bold: true, align: 'center' },
-        { text: dirLines.map(l => (typeof l === 'string' ? [{ text: l }] : [l])), align: 'center' },
+        { text: dirLines.map(l => (Array.isArray(l) ? l : typeof l === 'string' ? [{ text: l }] : [l])), align: 'center' },
         { text: [[{ text: drug, bold: true }, paren]] },
       ]);
     });
-    const size = 24;
-    const colW = [2.5, 3.4, 6.33];
-    const rowH = [0.68, 0.68, 0.68, 0.68, 0.68, 1.18];
+    // 「上げる（用量で変わる）」を1行に入れ、5行の高さをそろえる。24pt では3列の最長
+    // （動かす要素 1.87 / 上げる（用量で変わる）4.11 / ニトログリセリン（静脈を広げる）5.97in）＋余白が
+    // 本文幅 12.23in を超えるので、表は decklib 既定の 22pt（1.71 / 3.76 / 5.48in ＋左右余白 22pt）
+    const size = 22;
+    const colW = [2.2, 4.2, 5.83];
+    const rowH = [0.7, 0.78, 0.78, 0.78, 0.78, 0.78];
     const t = s.table(rows, { x: X0, y: TOP, colW, size, rowH, margin: [4, 10, 4, 12] });
     if (t.y + t.h > bottomOf(s) + 1e-6) throw new Error(`${id}: 表の下端 ${r3(t.y + t.h)}in > ${r3(bottomOf(s))}in`);
     console.log(`  ${id}: table bottom ${r3(t.y + t.h)} (limit ${r3(bottomOf(s))})`);
@@ -346,7 +393,7 @@ async function main() {
       {
         title: '用量（添付文書）', titleColor: C.blue,
         items: [
-          marks(brk('持続：2〜10 μg/kg/分で開始', 'で開始'), ['2〜10 μg/kg/分', DOSE]),
+          marks(brk('持続：2〜10 μg/kg/分で開始', '2〜10'), ['2〜10 μg/kg/分', DOSE]),
           marks(brk('急速降圧：10〜30 μg/kg を静注', '10〜30'), ['10〜30 μg/kg', DOSE]),
           ['高齢者は低用量から'],
         ],
@@ -367,7 +414,7 @@ async function main() {
           brk('下げすぎたら輸液と昇圧薬', '輸液'),
         ],
       },
-    ]);
+    ], { widths: GRID });
   }
 
   // ===== S5 ニトログリセリン（3列カード） =====
@@ -380,7 +427,7 @@ async function main() {
         items: [
           marks(brk('異常高血圧：0.5〜5 μg/kg/分で開始', '0.5〜5'), ['0.5〜5 μg/kg/分', DOSE]),
           marks(brk('低血圧維持：1〜5 μg/kg/分で開始', '1〜5'), ['1〜5 μg/kg/分', DOSE]),
-          ['心不全・狭心症は別の用量'],
+          brk('心不全・狭心症は別の用量', '別の'),
         ],
       },
       {
@@ -394,12 +441,12 @@ async function main() {
       {
         title: '注意', titleColor: C.vermilion,
         items: [
-          ['頭痛、反射性頻脈、耐性'],
+          brk('頭痛、反射性頻脈、耐性', '耐性'),
           brk('塩化ビニル製の回路に吸着', '回路'),
           marks(brk('PDE5 阻害薬・リオシグアトとの併用は禁忌', 'リオシグアト', '併用'), ['禁忌', DANGER]),
         ],
       },
-    ]);
+    ], { widths: GRID });
   }
 
   // ===== S6 ランジオロール（3列カード） =====
@@ -408,7 +455,7 @@ async function main() {
     const s = contentSlide(deck, id, 2);
     threeCards(s, id, [
       {
-        title: brk('用量（添付文書・手術時）', '（添付'), titleMulti: true, titleColor: C.blue,
+        title: '用量（手術時）', titleColor: C.blue,   // deviation（DEVIATIONS を参照）
         items: [
           marks(brk('0.125 mg/kg/分を 1 分間', '1 分間'), ['0.125 mg/kg/分', DOSE], ['1 分間', DOSE]),
           marks(['その後 0.04 mg/kg/分'], ['0.04 mg/kg/分', DOSE]),
@@ -419,7 +466,7 @@ async function main() {
         title: '作用', titleColor: C.blue,
         items: [
           brk('超短時間作用型 β1 遮断薬', 'β1'),
-          brk('心拍数を下げる、血圧はあまり下げない', '血圧', 'あまり'),
+          brk('心拍数を下げる、血圧はあまり下げない', '血圧'),
           ['止めれば数分で戻る'],
         ],
       },
@@ -431,7 +478,8 @@ async function main() {
           brk('喘息では気管支攣縮、術後・ICU の用量は別', '術後'),
         ],
       },
-    ]);
+      // 注意カードと作用カードは最長行の幅、残りを用量カードに（1行目の「0.125 mg/kg/分を」などを広く）
+    ], { widths: [null, 'need', 'need'] });
   }
 
   // ===== S7 ドブタミン（3列カード） =====
@@ -444,7 +492,7 @@ async function main() {
         items: [
           marks(['通常 1〜5 μg/kg/分'], ['1〜5 μg/kg/分', DOSE]),
           marks(brk('必要なら 20 μg/kg/分まで', '20'), ['20 μg/kg/分', DOSE]),
-          brk('アンプルは 5% ブドウ糖か生食で希釈', '5%', '生食'),
+          brk('アンプルは 5% ブドウ糖か生食で希釈', '5%'),
         ],
       },
       {
@@ -463,7 +511,7 @@ async function main() {
           brk('前負荷が足りないと効かない', '効かない'),
         ],
       },
-    ]);
+    ], { widths: GRID });
   }
 
   // ===== S8 アドレナリン（3列カード） =====
@@ -495,7 +543,8 @@ async function main() {
           brk('静注は希釈して少量ずつ', '少量'),
         ],
       },
-    ]);
+      // 用量カードは最長行の幅、注意カードは GRID と同じ 3.37in（S4・S5・S7 と左端をそろえる）、残りを作用カードに
+    ], { widths: ['need', null, GRID[2]] });
   }
 
   // ===== S9 落とし穴（箇条書き5行） =====
@@ -525,6 +574,10 @@ async function main() {
   }
 
   checkOnSlide();
+  console.log('  deviations（spec の on-slide から変えた文言）:');
+  for (const [id, list] of Object.entries(DEVIATIONS)) {
+    list.forEach(([from, to]) => console.log(`    ${id}: 「${from}」→「${to}」`));
+  }
   const res = await deck.save({ render: RENDER, renderDir: RENDER_DIR });
   if (res.violations !== 0 || res.validateOk === false) process.exitCode = 1;
   return res;
