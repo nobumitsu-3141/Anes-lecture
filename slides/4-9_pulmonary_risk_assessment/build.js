@@ -200,10 +200,9 @@ const r2 = v => Math.round(v * 100) / 100;
 const r3 = v => Math.round(v * 1000) / 1000;
 
 // ---------------------------------------------------------------------------
-// 行頭記号つきの項目群（1 つのテキスト枠）
-//  - 1 項目を 2〜3 行に割ったときは、2 行目以降を記号の右にぶら下げる（見えない記号 U+3000 で字下げ）。
-//  - ls: 行間（倍率。0.8 = 実機メイリオで約 1.2 em。3-11 の tightTable と同じ行送り）。
-//  - gap: 項目の間の段落後の間隔（pt）。
+// 行頭記号つきの項目群（1 つのテキスト枠。S2 のカード・1 行の強調ボックス用）
+//  - 1 項目を 2 行以上に割ったときは、2 行目以降を記号の右にぶら下げる（見えない記号 U+3000 で字下げ）。
+//  - ls: 行間（倍率。1 = 既定）。gap: 項目の間の段落後の間隔（pt）。
 //  幅の検査は decklib と同じ推定器（行頭記号ぶんを差し引く）。高さは実機メイリオ推定（1.5 em × ls）で取り、
 //  lint の推定（pt × ls × 1.18、段落後 未指定 = 6pt）が枠高 + 0.3cm を超えないことも確かめる。
 //  item = 行 | {lines:[行...], color, bold}（行 = 文字列 | run 配列）
@@ -269,11 +268,75 @@ function itemText(s, items, o) {
   return { x: o.x, y: o.y, w: o.w, h, bottom: r3(o.y + h) };
 }
 
-/** 見出し付きカード（角丸の灰色地 + 24pt 太字の見出し + 行頭記号つき項目 22pt） */
+// ---------------------------------------------------------------------------
+// 行送りを固定した項目リスト（S5・S6・S7 用）。枠線・塗りなしの表（2 列: 行頭記号 | 本文、1 項目 = 1 行）で組む。
+//  テキスト枠の行間（倍率）は描画系で 1 行の高さが変わる（実機メイリオ 1.5 em、LibreOffice の代替フォント約 1.2 em）ため、
+//  2〜3 行に割れる項目が多いカードは、3-11 の tightTable と同じく行送りを固定値（1.2 em = 26.4pt）にできる表のセルで組む。
+//  2 行目以降は本文の列に入るので、行頭記号の右にぶら下がる。項目の間は行の下余白（gap pt）。
+//  幅は decklib と同じ推定器で、高さは行数 × 行送り＋下余白で検査する。重なり検査用の登録も行う。
+//  （pptxgenjs はセル余白の先頭値が 1 未満だとインチとみなすので、余白はインチで渡す）
+// ---------------------------------------------------------------------------
+function itemTableH(items, o) {
+  const size = o.size || 22, lsEm = o.lsEm || 1.2, gap = o.gap != null ? o.gap : 6;
+  const its = normItems(items);
+  const n = its.reduce((a, it) => a + it.lines.length, 0);
+  return n * size * lsEm / 72 + (its.length - 1) * gap / 72;
+}
+function itemTable(s, items, o) {
+  const size = o.size || 22, lsEm = o.lsEm || 1.2, gap = o.gap != null ? o.gap : 6;
+  const LS = size * lsEm;   // pt
+  const marker = o.marker !== false;
+  const ind = marker ? (o.indent != null ? o.indent : 0.28) : 0;
+  const its = normItems(items);
+  const where = `p${s.page}「${s.title}」 項目「${runText(its[0].lines[0])}」`;
+  its.forEach(it => it.lines.forEach(l => {
+    const fi = fitInfo(runText(l), size, o.w - ind);
+    if (!fi.ok) throw new Error(`${where}: 「${runText(l)}」が幅に収まりません（推定 ${fi.needIn}in > ${r3(o.w - ind)}in、約${fi.overChars}字オーバー）`);
+  }));
+  const none = () => [{ type: 'none' }, { type: 'none' }, { type: 'none' }, { type: 'none' }];
+  const rowH = [];
+  const rows = its.map((it, i) => {
+    const padB = i < its.length - 1 ? r3(gap / 72) : 0;
+    const cellOpt = { margin: [0, 0, padB, 0], valign: 'top', border: none(), fontFace: FONT, fontSize: size };
+    const text = [];
+    it.lines.forEach((l, j) => {
+      const rr = toRuns(l);
+      rr.forEach((r, k) => text.push({
+        text: r.text,
+        options: {
+          fontFace: FONT, lang: 'ja-JP', fontSize: size, color: r.color || it.color || o.color || C.dark,
+          bold: (r.bold || it.bold || o.bold) || undefined, lineSpacing: LS,
+          breakLine: (k === rr.length - 1 && j < it.lines.length - 1) || undefined,
+        },
+      }));
+    });
+    rowH.push(r3(it.lines.length * LS / 72 + padB));
+    const body = { text, options: { ...cellOpt, align: o.align || 'left' } };
+    if (!marker) return [body];
+    const mk = {
+      text: [{ text: '•', options: { fontFace: FONT, lang: 'ja-JP', fontSize: size, color: C.dark, lineSpacing: LS } }],
+      options: { ...cellOpt, align: 'left' },
+    };
+    return [mk, body];
+  });
+  const h = r3(rowH.reduce((a, b) => a + b, 0));
+  if (o.h != null && h > o.h + 1e-6) throw new Error(`${where}: 高さ不足（必要 ${h}in > 枠 ${r3(o.h)}in）`);
+  const colW = marker ? [ind, r3(o.w - ind)] : [o.w];
+  s._bounds(where, o.x, o.y, o.w, h);
+  s.raw.addTable(rows, { x: o.x, y: o.y, w: o.w, colW, rowH, fontFace: FONT, fontSize: size });
+  s._reg('box', o.x, o.y, o.w, h, `items表「${runText(its[0].lines[0]).slice(0, 12)}」`);
+  return { x: o.x, y: o.y, w: o.w, h, bottom: r3(o.y + h) };
+}
+
+/**
+ * 見出し付きカード（角丸の灰色地 + 24pt 太字の見出し + 行頭記号つき項目 22pt）。
+ * table: true なら本文を itemTable（行送り固定 1.2 em）、false なら itemText（テキスト枠、行間 ls 倍）で組む。
+ */
 const CARD = { padX: 0.14, padY: 0.1, titleH: 0.45, titleGap: 0.04, titleSize: 24, size: 22, radius: 0.08 };
+const bodyH = o => (o.table ? itemTableH(o.items, { size: CARD.size, gap: o.gap }) : itemTextH(o.items, { size: CARD.size, ls: o.ls, gap: o.gap }));
 function listCardNeed(o) {
   const padY = o.padY != null ? o.padY : CARD.padY;
-  return 2 * padY + CARD.titleH + CARD.titleGap + itemTextH(o.items, { size: CARD.size, ls: o.ls, gap: o.gap });
+  return 2 * padY + CARD.titleH + CARD.titleGap + bodyH(o);
 }
 function listCard(s, o) {
   const padY = o.padY != null ? o.padY : CARD.padY;
@@ -282,19 +345,27 @@ function listCard(s, o) {
   const ix = r3(o.x + CARD.padX), iw = r3(o.w - 2 * CARD.padX);
   s.text(o.title, { x: ix, y: r3(o.y + padY), w: iw, h: CARD.titleH, size: CARD.titleSize, bold: true, color: o.titleColor || C.dark });
   const by = r3(o.y + padY + CARD.titleH + CARD.titleGap);
-  return itemText(s, o.items, { x: ix, y: by, w: iw, h: r3(o.y + o.h - padY - by), size: CARD.size, ls: o.ls, gap: o.gap });
+  const bh = r3(o.y + o.h - padY - by);
+  if (o.table) return itemTable(s, o.items, { x: ix, y: by, w: iw, h: bh, size: CARD.size, gap: o.gap });
+  return itemText(s, o.items, { x: ix, y: by, w: iw, h: bh, size: CARD.size, ls: o.ls, gap: o.gap });
 }
 
-/** 強調ボックス（白地＋ティールの枠・太字）。lines は 1〜2 行（各行 文字列 | run 配列）。 */
+/**
+ * 強調ボックス（白地＋ティールの枠・太字・中央揃え）。lines は 1〜2 行（各行 文字列 | run 配列）。
+ * table: true なら文字を itemTable（行送り固定 1.2 em）で箱の上下中央に置く。
+ */
+const emphTextH = o => (o.table ? itemTableH(o.lines, { size: o.size || 24, gap: 0 }) : itemTextH(o.lines, { size: o.size || 24, ls: 1, gap: 0 }));
+const emphNeed = o => emphTextH(o) + 2 * (o.margin != null ? o.margin : 0.08);
 function emphBox(s, o) {
   const m = o.margin != null ? o.margin : 0.08;
   s.box({ x: r3(o.x), y: r3(o.y), w: r3(o.w), h: r3(o.h), fill: C.white, radius: 0.08, line: { color: o.lineColor || C.teal, width: 2.5 } });
-  return itemText(s, o.lines, {
-    x: r3(o.x + m), y: r3(o.y + m), w: r3(o.w - 2 * m), h: r3(o.h - 2 * m), size: o.size || 24, ls: o.ls || 1, gap: 0,
-    marker: false, align: 'center', valign: 'middle', bold: true, color: o.color || C.dark,
-  });
+  const common = { x: r3(o.x + m), w: r3(o.w - 2 * m), size: o.size || 24, gap: 0, marker: false, align: 'center', bold: true, color: o.color || C.dark };
+  if (o.table) {
+    const th = emphTextH(o);
+    return itemTable(s, o.lines, { ...common, y: r3(o.y + (o.h - th) / 2) });
+  }
+  return itemText(s, o.lines, { ...common, y: r3(o.y + m), h: r3(o.h - 2 * m), ls: 1, valign: 'middle' });
 }
-const emphNeed = o => itemTextH(o.lines, { size: o.size || 24, ls: o.ls || 1, gap: 0 }) + 2 * (o.margin != null ? o.margin : 0.08);
 
 /**
  * 行の多い表（S3・S8 用。3-11 の tightTable を写したもの）。decklib の s.table と同じ見た目
@@ -380,11 +451,11 @@ async function main() {
     const s = deck.slide({ title: '術後肺合併症のリスク', chapter: 0, notes: notesOf(id), sources: sourcesFor(id) });
     const cw = r3((BW - 0.25) / 2);
     const L = {
-      title: q(id, '患者因子'), titleColor: C.blue, ls: 1, gap: 8, padY: 0.12,
+      title: q(id, '患者因子'), titleColor: C.blue, table: true, gap: 14, padY: 0.12,
       items: ['高齢（60 歳超で上がる）', 'ASA-PS 2 以上、介助が必要', 'COPD、うっ血性心不全', '1 か月以内の呼吸器感染', 'アルブミン 3.0 g/dL 未満、貧血'].map(t => q(id, t)),
     };
     const R = {
-      title: q(id, '手術・麻酔因子'), titleColor: C.vermilion, ls: 1, gap: 8, padY: 0.12,
+      title: q(id, '手術・麻酔因子'), titleColor: C.vermilion, table: true, gap: 14, padY: 0.12,
       items: ['上腹部・胸腔内の切開', '長時間手術（2 時間超から）', '緊急手術', '全身麻酔（区域麻酔より）', '残存筋弛緩（長時間作用型の薬）'].map(t => q(id, t)),
     };
     const ch = r2(Math.max(listCardNeed(L), listCardNeed(R)) + 0.01);
@@ -393,10 +464,9 @@ async function main() {
     const E = { lines: [mark(q(id, 'PPC が起きると 30 日死亡率は 19.5%（起きなければ 0.5%）'), ['19.5%', C.red])], size: 26 };
     const eh = r2(emphNeed(E) + 0.04);
     const ey = r2(TOP + ch + Math.max(GAP + 0.06, (BOT - TOP - ch - eh) / 2));
-    const e = emphBox(s, { ...E, x: X0, y: ey, w: BW, h: eh });
+    emphBox(s, { ...E, x: X0, y: ey, w: BW, h: eh });
     assertBottom(id, '強調ボックス', ey + eh);
     console.log(`  ${id}: カード h ${ch}（〜${r2(TOP + ch)}）、強調 ${ey}〜${r2(ey + eh)}`);
-    void e;
   }
 
   // ===== S3 ARISCAT スコア（表 + 下に 1 行） =====
@@ -453,9 +523,9 @@ async function main() {
   {
     const id = 'S5';
     const s = deck.slide({ title: 'COPD と喘息', chapter: 2, notes: notesOf(id), sources: sourcesFor(id) });
-    // 喘息のカードは 2〜3 行に割れる項目が多く 10 行になる。行送り 1.2 em（ls 0.8）で本文ゾーンに収める
+    // 喘息のカードは 2〜3 行に割れる項目が多く 10 行になる。行送り固定 1.2 em（itemTable）で本文ゾーンに収める
     const L = {
-      title: q(id, 'COPD'), titleColor: C.blue, ls: 0.8, gap: 12,
+      title: q(id, 'COPD'), titleColor: C.blue, table: true, gap: 12,
       items: [
         { lines: brk(id, '吸入薬は当日も続ける（持参させる）', '（持参') },
         q(id, '増悪中は延期。症状が元に戻るまで'),
@@ -466,7 +536,7 @@ async function main() {
     };
     const nsaids = brk(id, 'NSAIDs 過敏喘息：NSAIDs とコハク酸エステル型ステロイドの急速静注を避ける', 'NSAIDs と', 'ステロイドの');
     const R = {
-      title: q(id, '喘息'), titleColor: C.vermilion, ls: 0.8, gap: 4,
+      title: q(id, '喘息'), titleColor: C.vermilion, table: true, gap: 4,
       items: [
         { lines: brk(id, 'コントロール良好な時期に手術。ICS は続ける', 'ICS') },
         q(id, '不良なら延期して呼吸器内科へ'),
@@ -513,10 +583,10 @@ async function main() {
       { lines: brk(id, '疑いだけでは延期しない。低換気・重症肺高血圧・原因不明の安静時低酸素なら追加評価', '低換気', '原因不明') },
       { lines: brk(id, 'CPAP は持参。困難気道として備え、区域麻酔を優先', '困難気道') },
     ];
-    const o = { size: 22, ls: 0.8, gap: 18 };
-    const ih = r2(itemTextH(items, o) + 0.01);
+    const o = { size: 22, gap: 18 };
+    const ih = r3(itemTableH(items, o));
     const iy = r2(TOP + (ph - ih) / 2);
-    itemText(s, items, { ...o, x: rx, y: iy, w: rw, h: ih });
+    itemTable(s, items, { ...o, x: rx, y: iy, w: rw });
     console.log(`  ${id}: 左の地 w ${pw}（〜${r2(X0 + pw)}）、右 x ${rx} w ${rw}、右の高さ ${ih}（${iy}〜${r2(iy + ih)}）`);
   }
 
@@ -525,7 +595,7 @@ async function main() {
     const id = 'S7';
     const s = deck.slide({ title: '小児の上気道炎', chapter: 3, notes: notesOf(id), sources: sourcesFor(id) });
     const L = {
-      title: q(id, '延期を考える'), titleColor: C.vermilion, ls: 0.8, gap: 8, padY: 0.08,
+      title: q(id, '延期を考える'), titleColor: C.vermilion, table: true, gap: 8, padY: 0.08,
       items: [
         q(id, '38℃ 超の発熱、ぐったりしている'),
         q(id, '膿性鼻汁、湿性咳嗽'),
@@ -535,7 +605,7 @@ async function main() {
       ],
     };
     const R = {
-      title: q(id, '進める・工夫する'), titleColor: C.blue, ls: 0.8, gap: 4.5, padY: 0.08,
+      title: q(id, '進める・工夫する'), titleColor: C.blue, table: true, gap: 4.5, padY: 0.08,
       items: [
         q(id, '透明な鼻汁だけなら多くは可'),
         { lines: brk(id, '上気道炎から 2〜4 週たてばリスクは下がる', 'リスク') },
@@ -547,7 +617,7 @@ async function main() {
     const E = {
       lines: brk(id, '喉頭痙攣・気管支攣縮・低酸素に備える。迷えば延期し、保護者と主治医に共有', '迷えば')
         .map((l, i) => (i === 1 ? mark(l, ['迷えば延期し', C.red]) : l)),
-      size: 22, ls: 0.8, margin: 0.07,
+      size: 22, table: true, margin: 0.07,
     };
     const eh = r2(emphNeed(E) + 0.02);
     const ey = r2(BOT - eh);

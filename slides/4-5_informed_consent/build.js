@@ -150,46 +150,44 @@ const EMPH = { x: X0 + 0.6, w: BW - 1.2, radius: 0.1, lineW: 3.5 };
 
 // ---------------------------------------------------------------------------
 // 行送りを詰めたテキスト（カード・強調ボックス用）
-// 本文 22pt のまま、カード 2 枚＋強調ボックスを本文ゾーンに入れるため、行送りを 1.2 em に詰める
-// （tightTable と同じ行送り）。PowerPoint のメイリオの 1 行（約 1.5 em）× 0.8 = 1.2 em。
-// 行間は倍数（spcPct 80%）で入れる。固定値（spcPts）だと slide_lint の高さ推定が壊れるため。
-// slide_lint の推定（行 = pt × 0.8 × 1.18、段落後 6pt）と同じ式で枠の高さを確かめる。
+// 本文 22pt のまま、カード 2 枚＋強調ボックス＋出典 2 行を本文ゾーンに入れるため、行送りを 1.2 em に詰める
+// （tightTable と同じ行送り）。
+// - 1 行 = 1 テキストボックス（1 段落）にして、行送り 1.2 em の位置に上揃えで置く。
+//   段落の行間（spcPct）で詰めると、行の高さがフォントの行高の倍数になり、メイリオ（約 1.5 em）と
+//   LibreOffice の代替フォント（約 1.0〜1.2 em）で行送りが大きく違う（代替フォントでは行が重なる）。
+//   固定値（spcPts）は slide_lint の高さ推定が壊れる（行間を倍数として読む）。
+// - 各ボックスの高さは slide_lint の推定（1 行 = pt × 1.2 × 1.18 ＋段落後 6pt）が「枠高 + 0.3cm」に収まる最小値
+//   （22pt で 0.40in、24pt で 0.44in）。行送りより少し高いので、次の行の枠と重なるが、文字同士の枠の重なりは
+//   lint・decklib とも対象外。字面（上揃え）は行送りどおりに並ぶ。
 // ---------------------------------------------------------------------------
-const TIGHT = 0.8;
-const lineIn = size => size * 1.2 / 72;
-const tightH = (n, size) => Math.ceil(n * lineIn(size) * 1000) / 1000;
-const lintEst = (n, size) => n * (size / 72 * TIGHT * 1.18 + 6 / 72);
+const lineIn = size => size * 1.2 / 72;                                   // 行送り（in）
+const tightH = (n, size) => Math.ceil(n * lineIn(size) * 1000) / 1000;      // n 行ぶんの高さ（レイアウト用）
+/** 1 行のボックスの高さ: lint 推定（行 = pt/72 × 1.2 × 1.18、段落後 6pt）- 0.3cm 以上、かつ行送り以上 */
+const lineBoxH = size => Math.max(lineIn(size), Math.ceil(((size / 72) * 1.2 * 1.18 + 6 / 72 - 0.3 / CM) * 100) / 100);
 
 function tightText(s, lines, o) {
   const size = o.size || 22;
   if (size < 22) throw new Error(`p${s.page}: 本文は 22pt 以上（${size}pt）`);
   const norm = lines.map(l => (Array.isArray(l) ? l : [l]).map(r => (typeof r === 'string' ? { text: r } : r)));
-  norm.forEach(runs => {
+  const bh = lineBoxH(size), pitch = lineIn(size);
+  norm.forEach((runs, li) => {
     const t = runs.map(r => r.text).join('');
     const fi = fitInfo(t, size, o.w);
     if (!fi.ok) throw new Error(`p${s.page}「${t}」が幅 ${r3(o.w)}in に収まりません（推定 ${fi.needIn}in、約${fi.overChars}字オーバー）`);
-  });
-  const h = o.h != null ? o.h : tightH(norm.length, size);
-  if (h + 1e-9 < norm.length * lineIn(size)) throw new Error(`p${s.page}: 枠高 ${h}in に ${norm.length} 行が入りません`);
-  if (lintEst(norm.length, size) > h + 0.3 / CM + 1e-9) throw new Error(`p${s.page}: lint 推定の高さ ${r3(lintEst(norm.length, size))}in > 枠高 ${h}in + 0.12in`);
-  const where = `p${s.page} tight「${runText(norm[0].map(r => r.text))}」`;
-  s._bounds(where, o.x, o.y, o.w, h);
-  const out = [];
-  norm.forEach((runs, li) => {
-    runs.forEach((r, ri) => {
+    const y = r3(o.y + li * pitch);
+    const where = `p${s.page} 行「${t.slice(0, 12)}」`;
+    s._bounds(where, o.x, y, o.w, bh);
+    s.raw.addText(runs.map(r => {
       const op = { fontFace: FONT, lang: 'ja-JP', fontSize: size, color: r.color || o.color || C.dark };
       if (r.bold != null ? r.bold : o.bold) op.bold = true;
-      if (ri === runs.length - 1 && li < norm.length - 1) op.breakLine = true;
-      out.push({ text: r.text, options: op });
+      return { text: r.text, options: op };
+    }), {
+      x: o.x, y, w: o.w, h: bh, margin: 0, isTextBox: true,
+      fontFace: FONT, lang: 'ja-JP', fontSize: size, align: o.align || 'left', valign: 'top',
     });
+    s._reg('txt', o.x, y, o.w, bh, where);
   });
-  s.raw.addText(out, {
-    x: o.x, y: o.y, w: o.w, h, margin: 0, isTextBox: true,
-    fontFace: FONT, lang: 'ja-JP', fontSize: size,
-    align: o.align || 'left', valign: o.valign || 'top', lineSpacingMultiple: TIGHT,
-  });
-  s._reg('txt', o.x, o.y, o.w, h, where);
-  return h;
+  return tightH(norm.length, size);
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +195,7 @@ function tightText(s, lines, o) {
 // 幅: 各カードの最長行に左右の余白を足し、余りを等分。高さ: y から bottom まで（左右で揃える）。
 // 項目の間隔: 最も詰まったカードに合わせて余りを配る（上限 maxItemGap）。
 // ---------------------------------------------------------------------------
-const CARD = { padY: 0.1, titleSize: 24, size: 22, titleGap: 0.05, radius: 0.08, maxPadX: 0.2, minPadX: 0.08 };
+const CARD = { padY: 0.08, titleSize: 24, size: 22, titleGap: 0.04, radius: 0.08, maxPadX: 0.2, minPadX: 0.08 };
 
 function cardRow(s, cards, o) {
   const n = cards.length;
@@ -233,14 +231,15 @@ function cardRow(s, cards, o) {
   console.log(`  p${s.page} カード: 幅 ${info.join(' / ')}、左右余白 ${r3(padX)}in、高さ ${h}in（下端 ${r3(o.y + h)}in）、項目間 ${r3(g)}in`);
 }
 
-/** 強調ボックス（行送りを詰めた版。22pt 太字・白地＋色枠・中央揃え）。下端 bottom に合わせて置き、上端を返す */
+/** 強調ボックス（行送りを詰めた版。22pt 太字・白地＋色枠・中央揃え・本文ゾーンの全幅）。下端 bottom に合わせて置き、上端を返す */
 function emphTight(s, lines, o) {
-  const size = o.size || 22, padY = 0.05;
+  const size = o.size || 22, padY = 0.045;
   const th = tightH(lines.length, size);
   const h = r3(th + 2 * padY);
   const y = r3(o.bottom - h);
-  s.box({ x: EMPH.x, y, w: EMPH.w, h, fill: C.white, radius: EMPH.radius, line: { color: o.lineColor || C.teal, width: EMPH.lineW } });
-  tightText(s, lines, { x: EMPH.x + 0.15, y: r3(y + padY), w: EMPH.w - 0.3, h: th, size, bold: true, align: 'center' });
+  // カードの列と左右の端を揃える（本文ゾーンの全幅）
+  s.box({ x: X0, y, w: BW, h, fill: C.white, radius: EMPH.radius, line: { color: o.lineColor || C.teal, width: EMPH.lineW } });
+  tightText(s, lines, { x: X0 + 0.1, y: r3(y + padY), w: BW - 0.2, size, bold: true, align: 'center' });
   return y;
 }
 
@@ -410,8 +409,10 @@ async function main() {
 
   // ===== S5 リスクを数字で伝える（表 3列 × 7行＋見出し行） =====
   // 22pt・行間 1.2 em のまま。2 行になる行が 4 つ（歯・硬膜穿刺後頭痛・術中覚醒・死亡）あり、
-  // tightTable 既定の上下余白 3pt では 5.08in と本文ゾーン（1.85〜6.46in）を超えるため、上下余白だけ 0.5pt にする。
-  // 列幅は spec の目安（3.6/4.6/4.0）から、1 列目を最長の 13 字、3 列目を「Higgins 2002」が 1 行に入る幅にし、残りを 2 列目へ。
+  // tightTable 既定の余白 [3,6,3,6]pt では 5.08in と本文ゾーン（1.85〜6.46in）を超えるため、余白を [1,4,0.5,4]pt にする
+  // （pptxgenjs は margin[0] が 1 未満だとインチと解釈するので、上は 1pt）。
+  // 列幅は spec の目安（3.6/4.6/4.0）から、1 列目を最長の 13 字、3 列目を「Higgins 2002」が 1 行に入る幅にし、残りを 2 列目へ
+  // （2 列目は「10〜79%（危険因子 0〜4 個で）」が代替フォントの描画でも 1 行に入るよう、左右余白を 4pt に詰めて広げる）。
   {
     const id = 'S5';
     const sources = srcFix(id, [['Cook TM, et al. Br J Anaesth 2009;102:179-190（NAP3）', null]],
@@ -431,7 +432,7 @@ async function main() {
       [cell('術中覚醒'), cellB('約 1/19,600（筋弛緩薬使用 1/8,200、帝王切開 1/670）', '1/8,200'), cell('NAP5')],
       [cell('脊麻・硬膜外の永続的な障害'), cell('10 万件に 2.0〜4.2 件'), cell('NAP3')],
       [cell('麻酔が単独の原因の死亡'), cellB('1 万麻酔に 0.07〜0.21（国内 1994〜2005 年）', '（国内'), cellB('JSA 偶発症調査', '偶発')],
-    ], { x: X0, y: Y0, colW: [4.62, 5.2, 2.38], margin: [0.5, 6, 0.5, 6] });
+    ], { x: X0, y: Y0, colW: [4.56, 5.31, 2.33], margin: [1, 4, 0.5, 4] });
     console.log(`  p${s.page} 表: 下端 ${r3(t.y + t.h)}in、行高 ${t.rowH.join(' / ')}`);
     if (t.y + t.h > BOT2 + 1e-6) throw new Error(`${id}: 表の下端 ${r3(t.y + t.h)}in > ${BOT2}in`);
   }
@@ -507,7 +508,7 @@ async function main() {
       mark(q(id, '覚醒 1/8,200（筋弛緩薬あり）、麻酔単独死亡 1 万に 0.07〜0.21'), ['1/8,200', C.vermilion], ['0.07〜0.21', C.vermilion]),
       mark(q(id, '能力は 4 要素で決定ごと。18 歳で成人。未成年にも年齢相応に説明'), ['4 要素', C.blue]),
       mark(q(id, '署名は証拠にすぎない。説明の中身と質問への答えを記録する'), ['説明の中身と質問への答え', C.blue]),
-    ], { y: 1.95, size: 24, gap: 24 });
+    ], { y: 2.0, size: 24, gap: 30 });
   }
 
   const res = await deck.save({ render: true, renderDir: RENDER_DIR });
