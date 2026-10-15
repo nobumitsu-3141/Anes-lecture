@@ -186,7 +186,9 @@ function drawCard(s, c, x, y, w, h, itemGap) {
     yy += lines.length * lineIn(CARD.size) + itemGap;
   });
   const end = yy - itemGap;
-  if (end > y + h - CARD.padY + 1e-6) throw new Error(`p${s.page} カード「${runText(c.title)}」: 高さ不足（本文の下端 ${r3(end)} > ${r3(y + h - CARD.padY)}）`);
+  if (end > y + h - CARD.padY + 1e-6 || end + overhang(CARD.size) > y + h + 1e-6) {
+    throw new Error(`p${s.page} カード「${runText(c.title)}」: 高さ不足（本文の下端 ${r3(end)} > ${r3(y + h - CARD.padY)}）`);
+  }
 }
 /**
  * 2 列のカード。幅は各カードの最長行に必要な幅を確保し、余りを等分。高さは y〜bottom。
@@ -386,7 +388,7 @@ async function main() {
       mark(q(id, '中間型（NPH）：当日朝は 50%'), ['中間型（NPH）：', C.blue], ['50%', C.vermilion]),
       mark(q(id, '速効型・超速効型：絶食中は打たない（補正分だけ）'), ['速効型・超速効型：', C.blue]),
       mark(q(id, '1 型糖尿病：基礎インスリンは絶対に抜かない（抜くと DKA）'), ['1 型糖尿病：', C.blue], ['絶対に抜かない', C.red]),
-      mark(q(id, '1 食を超える絶食、ポンプが使えない：静注インスリン持続へ'), ['1 食を超える絶食、ポンプが使えない：', C.blue], ['静注インスリン持続', C.vermilion]),
+      mark(q(id, '1 食を超える絶食、ポンプが使えない：静注インスリン持続へ'), ['静注インスリン持続', C.vermilion]),
     ], BUL);
     const lines = brk(id, 'ポンプ（CSII）は条件を満たせば継続。術野から離し、対極板と電気メスの間に置かない', '術野');
     const by = BOTTOM - 0.04 - EMPH_H;

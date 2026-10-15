@@ -99,63 +99,35 @@ const X0 = LAYOUT.body.x;        // 0.55
 const XR = LAYOUT.body.right;    // 12.78
 const BW = XR - X0;              // 12.23
 const TOP = 1.85;                // 本文の上端
-const BOT = 6.45;                // 出典 2 行（y 6.5）のときの本文下端
+const BOT = 6.44;                // 出典 2 行（枠 y6.5・下揃え。メイリオ 16pt 2 行で文字の上端 約6.68in）の 0.24in 上
 const GAP = 0.26;                // 要素間（0.24in 以上）
 const em = (text, color = C.vermilion, bold = true) => ({ text, color, bold });
 const r3 = v => Math.round(v * 1000) / 1000;
 
 // ---------------------------------------------------------------------------
-// 行間を詰めたテキスト（lineSpacingMultiple = spcPct。lint は倍数の行間を読める）
-// lines: 行の配列（1 行 = 1 段落。行は文字列 or run 配列）
+// 行送りを詰めたテキスト（カードと 2 行の強調ボックス）。22pt 以上のまま行送りを 1.2 em にする
+// （3-11 の tightTable と同じ考え方。4-13 と同じ組み方）。
+// 段落の行間（spcPct / spcPts）は使わず、1 行ずつ decklib の s.text（上揃え）を 1.2 em おきに置く。
+//  - spcPts の固定値は slide_lint の高さ推定を壊し、spcPct は代替フォント（LibreOffice の描画）で
+//    行送りが変わる。1 行 1 枠なら行の位置が枠の y で決まり、PowerPoint でも描画確認でも同じ行送りになる。
+//  - 枠の高さは decklib / lint の 1 行の下限（22pt 0.41in、24pt 0.46in）で、次の行の枠と少し重なる
+//    （文字どうしの枠の重なりは lint・decklib とも対象外）。
+// lines: 行の配列（行は文字列 or run 配列）。戻り値: 行送りぶんの高さ
 // ---------------------------------------------------------------------------
-const LS = 0.8;                   // メイリオの 1 行 1.5 em × 0.8 = 1.2 em
-const MEIRYO_LINE = 1.5;
-const LINT_TOL = 0.3 / 2.54;      // lint のあふれ許容 0.3cm
-function runsOf(line) {
-  const arr = Array.isArray(line) ? line : [line];
-  return arr.map(r => (typeof r === 'string' ? { text: r } : { ...r }));
-}
-const lineText = line => runsOf(line).map(r => r.text).join('');
-/** n 行・size pt・行間 ls のときの高さ（実機メイリオ想定） */
-const tightH = (n, size, ls = LS) => n * (size / 72) * MEIRYO_LINE * ls;
-
+const LS_EM = 1.2;
+const lineIn = size => size * LS_EM / 72;            // 行送り（22pt 0.367in、24pt 0.4in）
+const BOX_H = { 22: 0.41, 24: 0.46 };                // 1 行の枠の高さ
+const tightH = (n, size) => n * lineIn(size);
 function tightText(s, lines, o) {
-  const size = o.size || 22, ls = o.ls || LS;
-  if (size < 22) throw new Error(`p${s.page}: 本文は 22pt 以上`);
-  const where = `p${s.page} 「${lineText(lines[0]).slice(0, 14)}」`;
-  lines.forEach(l => {
-    const t = lineText(l);
-    const fi = fitInfo(t, size, o.w);
-    if (!fi.ok) throw new Error(`${where}: 「${t}」が幅 ${r3(o.w)}in に収まりません（推定 ${fi.needIn}in、約${fi.overChars}字オーバー）`);
-  });
-  const n = lines.length;
-  const real = tightH(n, size, ls);
-  const lint = n * ((size / 72) * ls * 1.18 + 6 / 72);   // slide_lint.py の推定（段落後 6pt を仮定）
-  const h = o.h != null ? o.h : Math.max(real, lint - LINT_TOL);
-  if (lint > h + LINT_TOL + 1e-9 || real > h + 1e-6) throw new Error(`${where}: 高さ不足（h ${r3(h)}in、必要 ${r3(Math.max(real, lint - LINT_TOL))}in）`);
-  s._bounds(where, o.x, o.y, o.w, h);
-  const out = [];
-  lines.forEach((l, li) => {
-    const rs = runsOf(l);
-    rs.forEach((r, ri) => {
-      out.push({
-        text: r.text,
-        options: {
-          fontFace: FONT, lang: 'ja-JP', fontSize: size, color: r.color || o.color || C.dark,
-          bold: (r.bold != null ? r.bold : o.bold) || undefined,
-          lineSpacingMultiple: ls,
-          breakLine: (ri === rs.length - 1 && li < lines.length - 1) || undefined,
-        },
-      });
+  const size = o.size || 22;
+  if (!BOX_H[size]) throw new Error(`tightText: size ${size} は 22 / 24 のみ`);
+  lines.forEach((line, i) => {
+    s.text([line], {
+      x: r3(o.x), y: r3(o.y + i * lineIn(size)), w: r3(o.w), h: BOX_H[size],
+      size, bold: !!o.bold, color: o.color || C.dark, align: o.align || 'left',
     });
   });
-  s.raw.addText(out, {
-    x: o.x, y: o.y, w: o.w, h, margin: 0, isTextBox: true,
-    fontFace: FONT, lang: 'ja-JP', fontSize: size,
-    align: o.align || 'left', valign: o.valign || 'top', lineSpacingMultiple: ls,
-  });
-  s._reg('txt', o.x, o.y, o.w, h, `tight「${lineText(lines[0]).slice(0, 12)}」`);
-  return h;
+  return tightH(lines.length, size);
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +146,8 @@ function itemCard(s, c, o) {
   y += tightText(s, [c.title], { x: tx, y, w: tw, size: CARD.titleSize, bold: true, color: c.titleColor });
   y += CARD.tgap;
   c.items.forEach((it, i) => {
-    tightText(s, ['•'], { x: tx, y, w: CARD.indent, size: CARD.size, color: c.titleColor });
+    // 「•」は推定器では全角 1 字（22pt で 0.342in）。枠は項目の文字枠に重ねて広めに取る（文字どうしの重なりは無害）
+    tightText(s, ['•'], { x: tx, y, w: 0.36, size: CARD.size, color: c.titleColor });
     y += tightText(s, it, { x: tx + CARD.indent, y, w: tw - CARD.indent, size: CARD.size });
     if (i < c.items.length - 1) y += o.igap;
   });
@@ -211,7 +184,7 @@ function callout(s, lines, o) {
   const th = tightH(lines.length, size);
   tightText(s, lines, { x: X0 + 0.2, y: o.y + (o.h - th) / 2, w: BW - 0.4, size, bold: true, align: 'center' });
 }
-const calloutH = (n, size) => (n === 1 ? r3(tightH(1, size, 1) + 0.24) : r3(tightH(n, size) + 0.16));
+const calloutH = (n, size) => (n === 1 ? r3(size / 72 * 1.5 + 0.24) : r3(tightH(n, size) + 0.16));
 
 /**
  * 行の多い表（3-11_local_anesthetics/build.js の tightTable を写したもの）。decklib の s.table と同じ見た目
@@ -296,7 +269,7 @@ async function main() {
       'ドライウェイトと溢水の所見（浮腫、ラ音、起座呼吸、頸静脈怒張）',
       '透析の抗凝固（ヘパリンかナファモスタットか）と量を聞く',
       '残っている尿量、最近の透析中の低血圧、体重増加',
-    ], { y: TOP, size: 24, gap: 16 });
+    ], { y: TOP, size: 24, gap: 18 });
     const bh = calloutH(1, 26);
     callout(s, [['腎臓内科・透析室と、透析の日と抗凝固を', em('前もって決める')]], { y: r3(BOT - bh), h: bh, size: 26 });
   }

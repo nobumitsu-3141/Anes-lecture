@@ -340,16 +340,28 @@ function tightTable(s, rows, o) {
 //  上下の位置は口の高さに対する割合 f（上端 0・下端 1）。
 // ---------------------------------------------------------------------------
 const MOUTH = {
-  palate: 'F7DFCC', dark: '404040', tongue: 'E8A673', lip: '595959',
-  fTop: 0.2,       // アーチの頂点（軟口蓋の縁の中央。口蓋垂の付け根）
-  fUvula: 0.44,    // 口蓋垂の先端
-  fShoulder: 0.56, // アーチの肩（ここから下が口蓋弓の柱）
-  fBottom: 0.94,   // 柱の下端（舌に隠れる）
+  hard: 'FBE9DF', soft: 'F2C4B0', dark: '404040', tongue: 'E8A673', lip: '595959',
+  fSoft: 0.2,      // 軟口蓋の帯の上端（ここより上が硬口蓋）
+  fTop: 0.33,      // アーチの頂点（軟口蓋の縁の中央。口蓋垂の付け根）
+  fUvula: 0.5,     // 口蓋垂の先端
+  fShoulder: 0.62, // アーチの肩（ここから下が口蓋弓の柱）
+  fBottom: 0.86,   // 柱の下端（舌に隠れる）
   halfW: 0.36,     // アーチの半幅（口の半幅に対する割合）
-  levels: { 1: 0.8, 2: 0.55, 3: 0.3, 4: 0.13 },   // 舌の上縁（両端の高さ）
+  softW: 0.13,     // 軟口蓋・口蓋弓の帯の幅（アーチの外側へ。in）
+  levels: { 1: 0.8, 2: 0.6, 3: 0.42, 4: 0.17 },   // 舌の上縁（両端の高さ）
   dome: 0.04,      // 舌の上縁の中央の盛り上がり（in）
-  uvTopHalfW: 0.09, uvTipR: 0.065,                 // 口蓋垂の付け根の半幅・先端の丸みの半径（in）
+  uvTopHalfW: 0.1, uvTipR: 0.075,                  // 口蓋垂の付け根の半幅・先端の丸みの半径（in）
 };
+/** アーチ（下端 fBottom の左 → 肩 → 頂点 fTop の弧 → 肩 → 右下）。half: 半幅（in） */
+function archPts(cx, half, yTop, yShoulder, yBottom) {
+  const pts = [[r3(cx - half), r3(yBottom)], [r3(cx - half), r3(yShoulder)]];
+  for (let k = 1; k < 24; k++) {
+    const t = Math.PI - (Math.PI * k) / 24;
+    pts.push([r3(cx + half * Math.cos(t)), r3(yShoulder - (yShoulder - yTop) * Math.sin(t))]);
+  }
+  pts.push([r3(cx + half), r3(yShoulder)], [r3(cx + half), r3(yBottom)]);
+  return pts;
+}
 function mouthFig(s, o) {
   const { cx, top, w, h, cls } = o;
   const rx = w / 2, ry = h / 2, cy = top + ry;
@@ -360,17 +372,13 @@ function mouthFig(s, o) {
     const t = (2 * Math.PI * k) / N;
     ell.push([r3(cx + rx * Math.cos(t)), r3(cy + ry * Math.sin(t))]);
   }
-  // 口腔（淡色）
-  s.polyline(ell, { color: MOUTH.palate, width: 1, closed: true, fill: MOUTH.palate });
+  // 口腔の天井（硬口蓋。淡色）
+  s.polyline(ell, { color: MOUTH.hard, width: 1, closed: true, fill: MOUTH.hard });
+  // 軟口蓋と左右の口蓋弓（アーチの外側の帯。やや濃い色）
+  const a = MOUTH.halfW * rx, ys = Y(MOUTH.fShoulder), yB = Y(MOUTH.fBottom);
+  s.polyline(archPts(cx, a + MOUTH.softW, Y(MOUTH.fSoft), ys, yB), { color: MOUTH.soft, width: 1, closed: true, fill: MOUTH.soft });
   // 咽頭の入口（暗色のアーチ）。縁＝軟口蓋の縁＋左右の口蓋弓（青）
-  const a = MOUTH.halfW * rx, ys = Y(MOUTH.fShoulder), arcH = (MOUTH.fShoulder - MOUTH.fTop) * h;
-  const arch = [[r3(cx - a), r3(Y(MOUTH.fBottom))], [r3(cx - a), r3(ys)]];
-  for (let k = 1; k < 24; k++) {
-    const t = Math.PI - (Math.PI * k) / 24;
-    arch.push([r3(cx + a * Math.cos(t)), r3(ys - arcH * Math.sin(t))]);
-  }
-  arch.push([r3(cx + a), r3(ys)], [r3(cx + a), r3(Y(MOUTH.fBottom))]);
-  s.polyline(arch, { color: C.blue, width: 2.5, closed: true, fill: MOUTH.dark });
+  s.polyline(archPts(cx, a, Y(MOUTH.fTop), ys, yB), { color: C.blue, width: 2.5, closed: true, fill: MOUTH.dark });
   // 口蓋垂（アーチの頂点から垂れる）
   const uw = MOUTH.uvTopHalfW, ur = MOUTH.uvTipR, yt = Y(MOUTH.fTop) - 0.01, yb = Y(MOUTH.fUvula) - ur;
   const uv = [[r3(cx - uw), r3(yt)], [r3(cx - ur), r3(yb)]];
@@ -379,7 +387,7 @@ function mouthFig(s, o) {
     uv.push([r3(cx + ur * Math.cos(t)), r3(yb + ur * Math.sin(t))]);
   }
   uv.push([r3(cx + ur), r3(yb)], [r3(cx + uw), r3(yt)]);
-  s.polyline(uv, { color: C.blue, width: 2, closed: true, fill: MOUTH.palate });
+  s.polyline(uv, { color: C.blue, width: 2, closed: true, fill: MOUTH.soft });
   // 舌（上縁は両端が口の輪郭に接し、中央がわずかに盛り上がる）
   const yl = Y(MOUTH.levels[cls]);
   const dy = (yl - cy) / ry;
