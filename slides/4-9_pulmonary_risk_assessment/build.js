@@ -192,7 +192,7 @@ const X0 = LAYOUT.body.x;        // 0.55
 const XR = LAYOUT.body.right;    // 12.78
 const BW = XR - X0;              // 12.23
 const TOP = 1.85;                // 本文の上端
-const BOT = 6.47;                // 出典 2 行（枠 y6.5）のときの本文下端（全スライド出典 2 行）
+const BOT = 6.46;                // 出典 2 行（枠 y6.5）のときの本文下端（全スライド出典 2 行）
 const GAP = 0.24;                // 要素間の最小間隔（0.6cm）
 const CM = 2.54;
 const MEIRYO_EM = 1.5;           // 実機メイリオの 1 行高（em、行間 100%）
@@ -380,11 +380,11 @@ async function main() {
     const s = deck.slide({ title: '術後肺合併症のリスク', chapter: 0, notes: notesOf(id), sources: sourcesFor(id) });
     const cw = r3((BW - 0.25) / 2);
     const L = {
-      title: q(id, '患者因子'), titleColor: C.blue, ls: 1, gap: 8, padY: 0.14,
+      title: q(id, '患者因子'), titleColor: C.blue, ls: 1, gap: 8, padY: 0.12,
       items: ['高齢（60 歳超で上がる）', 'ASA-PS 2 以上、介助が必要', 'COPD、うっ血性心不全', '1 か月以内の呼吸器感染', 'アルブミン 3.0 g/dL 未満、貧血'].map(t => q(id, t)),
     };
     const R = {
-      title: q(id, '手術・麻酔因子'), titleColor: C.vermilion, ls: 1, gap: 8, padY: 0.14,
+      title: q(id, '手術・麻酔因子'), titleColor: C.vermilion, ls: 1, gap: 8, padY: 0.12,
       items: ['上腹部・胸腔内の切開', '長時間手術（2 時間超から）', '緊急手術', '全身麻酔（区域麻酔より）', '残存筋弛緩（長時間作用型の薬）'].map(t => q(id, t)),
     };
     const ch = r2(Math.max(listCardNeed(L), listCardNeed(R)) + 0.01);
@@ -392,8 +392,7 @@ async function main() {
     listCard(s, { ...R, x: r3(XR - cw), y: TOP, w: cw, h: ch });
     const E = { lines: [mark(q(id, 'PPC が起きると 30 日死亡率は 19.5%（起きなければ 0.5%）'), ['19.5%', C.red])], size: 26 };
     const eh = r2(emphNeed(E) + 0.04);
-    const ey = r2(TOP + ch + (BOT - TOP - ch - eh) / 2);
-    if (ey - (TOP + ch) < GAP - 1e-6) throw new Error(`${id}: カードと強調ボックスの間 ${r3(ey - TOP - ch)}in < ${GAP}`);
+    const ey = r2(TOP + ch + Math.max(GAP + 0.06, (BOT - TOP - ch - eh) / 2));
     const e = emphBox(s, { ...E, x: X0, y: ey, w: BW, h: eh });
     assertBottom(id, '強調ボックス', ey + eh);
     console.log(`  ${id}: カード h ${ch}（〜${r2(TOP + ch)}）、強調 ${ey}〜${r2(ey + eh)}`);
@@ -467,7 +466,7 @@ async function main() {
     };
     const nsaids = brk(id, 'NSAIDs 過敏喘息：NSAIDs とコハク酸エステル型ステロイドの急速静注を避ける', 'NSAIDs と', 'ステロイドの');
     const R = {
-      title: q(id, '喘息'), titleColor: C.vermilion, ls: 0.8, gap: 4.5,
+      title: q(id, '喘息'), titleColor: C.vermilion, ls: 0.8, gap: 4,
       items: [
         { lines: brk(id, 'コントロール良好な時期に手術。ICS は続ける', 'ICS') },
         q(id, '不良なら延期して呼吸器内科へ'),
@@ -536,7 +535,7 @@ async function main() {
       ],
     };
     const R = {
-      title: q(id, '進める・工夫する'), titleColor: C.blue, ls: 0.8, gap: 5, padY: 0.08,
+      title: q(id, '進める・工夫する'), titleColor: C.blue, ls: 0.8, gap: 4.5, padY: 0.08,
       items: [
         q(id, '透明な鼻汁だけなら多くは可'),
         { lines: brk(id, '上気道炎から 2〜4 週たてばリスクは下がる', 'リスク') },
