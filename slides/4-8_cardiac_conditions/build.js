@@ -402,10 +402,11 @@ function listCard(s, o) {
 /**
  * 2 列カード。幅は各カードの最長行に合わせ、余りを配る（leftShare: 左に配る割合。既定は等分）。
  * 高さは h（省略時は高い方に合わせる）。
- * 項目の間隔は左右で同じ値にそろえる（高い方のカードに入る分だけ広げる）。余った高さはカードの下の余白になる。
+ * 項目の間隔は左右で同じ値にそろえる（高い方のカードに入る分だけ広げる。widenGaps=false なら広げない）。
+ * 余った高さはカードの下の余白になる。
  * 戻り値: カードの下端
  */
-function twoCards(s, id, L, R, y, h, G = 0.25, leftShare = 0.5) {
+function twoCards(s, id, L, R, y, h, G = 0.25, leftShare = 0.5, widenGaps = true) {
   const wl = listCardNeedW(L), wr = listCardNeedW(R);
   const slack = BW - G - wl - wr;
   if (slack < 0) throw new Error(`${id}: 2 列カードの幅が ${r3(-slack)}in 足りません`);
@@ -417,7 +418,7 @@ function twoCards(s, id, L, R, y, h, G = 0.25, leftShare = 0.5) {
     const n = normItems(c.items).length;
     return n > 1 ? Math.max(0, Math.floor((ch - listCardNeed(c)) / (n - 1) * 72 * 10) / 10) : Infinity;
   };
-  const add = Math.min(room(L), room(R));
+  const add = widenGaps ? Math.min(room(L), room(R)) : 0;
   const widen = c => (Number.isFinite(add) && add > 0 ? { ...c, gap: (c.gap || 0) + add } : c);
   const Ls = widen(L), Rs = widen(R);
   listCard(s, { ...Ls, x: X0, y, w: wL, h: ch });
@@ -677,40 +678,47 @@ async function main() {
     const eh = up3(emphNeed(E));
     const ey = r3(BOT - eh);
     const ch = r3(ey - GAP - TOP);
-    twoCards(s, id, L, R, TOP, ch, 0.24);
+    // 幅の余りは右（文字幅の狭い心房細動のカード）へ多めに配る（左は最長行に 0.03in 程度を残す）
+    // 高さの余り（約 0.09in）は項目の間に配らず、カードの下の余白として残す（実機フォントで行が増えたときの余裕）
+    twoCards(s, id, L, R, TOP, ch, 0.24, 0.2, false);
     emphBox(s, { ...E, x: X0, y: ey, w: BW, h: eh });
     assertBottom(s, id, '強調ボックス', ey + eh);
     console.log(`  ${id}: カード ${TOP}〜${r3(TOP + ch)}、強調 ${ey}〜${r3(ey + eh)}`);
   }
 
   // ===== S7 肺高血圧：相談して、送る（箇条書き 5 行 + 強調ボックス） =====
+  //  行頭記号を全行で黒にするため（テキスト枠の箇条書きは先頭の語の色が記号に移る）、行送り固定の項目表で組む。
+  //  行頭記号の幅は S8 の箇条書き（24pt × 1.15 = 28pt）に合わせる。項目の間と強調ボックスの前を均等にあける。
   {
     const id = 'S7';
     const s = specSlide(deck, id);
     const BOT = botOf(s);
     const items = [
       q(id, '定義：安静時の平均肺動脈圧 20 mmHg 超（2022 ESC/ERS）'),
-      mark(q(id, '非心臓手術の早期死亡 7%。肺動脈性肺高血圧の緊急手術は 15%'), ['緊急手術は 15%', C.red]),
+      mark(q(id, '非心臓手術の早期死亡 7%。肺動脈性肺高血圧の緊急手術は 15%'), ['緊急手術は 15%', C.vermilion]),
       q(id, '合併症を増やす：右房圧上昇、6 分間歩行 399 m 未満、昇圧薬、緊急'),
       q(id, '肺高血圧の治療薬は続ける（I）。心エコー・右心カテで層別化'),
       mark(q(id, '避ける：低酸素、高 CO2、アシドーシス、低体温、低血圧'), ['避ける：', C.vermilion]),
     ];
-    const size = bulletSize(items, [24, 22]);
+    const IND = r3(Math.round(24 * 1.15) / 72);   // S8 の箇条書きと同じ行頭記号の幅
+    const size = bulletSize(items, [24, 22], BW, IND);
     const E = {
       lines: markLines(brk(id, '待機手術は肺高血圧の診療経験がある施設へ。緊急なら専門医に電話してから', '緊急'),
         { 1: [['専門医に電話してから', C.vermilion]] }),
       size: 24, margin: 0.1,
     };
     const eh = up3(emphNeed(E));
-    const gap = 12;
-    const bh = heightFor(items.length, size, gap);
-    const sep = r2(Math.max(GAP + 0.1, (BOT - TOP - bh - eh) / 2));
-    const by0 = r2(TOP + Math.max(0, (BOT - TOP - bh - sep - eh) / 2));
-    s.bullets(items, { y: by0, h: bh, size, gap });
-    const ey = r3(by0 + bh + sep);
+    const ey = r3(BOT - eh);
+    // 項目 5 行（1 行 = size × 1.2）＋項目間 4 つ＋強調ボックスの前 1 つ（項目間 + 0.1in）で TOP〜ey を埋める
+    const lineH = size * 1.2 / 72;
+    const gapIn = (ey - TOP - items.length * lineH - 0.1) / items.length;
+    const gap = Math.floor(gapIn * 72 * 10) / 10;   // pt
+    const t = itemTable(s, items, { x: X0, y: TOP, w: BW, size, gap, indent: IND });
+    const sep = r3(ey - t.bottom);
+    if (sep < GAP - 1e-6) throw new Error(`${id}: 箇条書きと強調ボックスの間 ${sep}in < ${GAP}in`);
     emphBox(s, { ...E, x: X0, y: ey, w: BW, h: eh });
     assertBottom(s, id, '強調ボックス', ey + eh);
-    console.log(`  ${id}: 箇条書き ${size}pt ${by0}〜${r2(by0 + bh)}、強調 ${ey}〜${r3(ey + eh)}`);
+    console.log(`  ${id}: 箇条書き ${size}pt ${TOP}〜${t.bottom}（項目間 ${gap}pt）、間 ${sep}、強調 ${ey}〜${r3(ey + eh)}`);
   }
 
   // ===== S8 まとめ（箇条書き 5 行） =====
