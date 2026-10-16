@@ -12,7 +12,7 @@
  *     （DEVIATIONS を当てたうえで）順につなげたものと一字一句同じでなければ Error（checkOnSlide）。
  *   - ノートは spec.md から実行時に読み込む（原文のまま全文。【要確認】もノートには残す）。
  *   - 出典は spec の sources 行を ' / ' で項目に分けて渡す（2行への折り返しはライブラリ）。
- *     16pt で 2 行に入らない S4・S8 だけ SOURCE_DEVIATIONS で縮める（文献は落とさない）。
+ *     16pt で 2 行に入らない S4・S8 だけ SOURCE_DEVIATIONS で縮める（文献・年は落とさない）。
  * render（PDF/JPG）はリポジトリの外に出す: RENDER_DIR / DECK_RENDER_DIR（未指定なら OS の一時ディレクトリ）。
  *
  * 図はすべてネイティブ図形（箱・線・freeform の矢じり・表）。ラベルは図の外に置く。
@@ -73,22 +73,22 @@ function spec(id) {
 }
 
 // ---------------------------------------------------------------------------
-// 出典。16pt・幅 11.6in で 2 行に入らないものだけ、指示の順（区切りの空白を詰める → （）内の補足を外す）で縮める。
-// 文献そのものは落とさない。items はライブラリに渡す項目（1 項目 = 1 行に入る塊。行内の連結は ' / '）。
-//  - S4: 区切りの空白を詰めても 24.11in（2 行 = 23.2in）。日本麻酔科学会の 2 文書の（2021）（2025）を外すと
-//        2 行目「日本麻酔科学会 周術期禁煙プラクティカルガイド / 日本麻酔科学会 悪性高熱症管理ガイドライン」が 10.90in で入る
-//        （外した後は空白を詰める必要がないので ' / ' のまま）。
-//  - S8: どの 2 文献を並べても 1 行（11.6in）を超える（最短の組でも 14.07in）ので、文献の途中の空白で行を分ける。
-//        それでも 1 行目の候補「…Circulation」（10.02in）の後が 13.03in になるため、（2024 AHA/ACC）を外す
-//        （2 行目 10.93in）。区切りの空白を詰めるだけでは 2 行目が 12.88in で入らない。
+// 出典。16pt・幅 11.6in で 2 行に入らないものだけ縮める。文献そのものと版の年は落とさない。
+// items はライブラリに渡す項目（1 項目 = 1 行に入る塊。行内の連結は ' / '）。ライブラリの出典は 2 行まで（3 行は Error）。
+//  - S4: ASA の 1 文献だけで 11.12in（1 行がほぼ埋まる）、日本麻酔科学会の 2 文書を ' / ' で並べると 13.00in
+//        （空白を詰めても 12.85in）で、2 行に入らない。（2021）（2025）は版を示すので外さず（QA 指摘）、
+//        2 文書に共通の発行者名「日本麻酔科学会」を 1 回にまとめて「・」でつなぐ（2 行目 11.15in）。
+//  - S8: どの 2 文献を並べても 1 行（11.6in）を超える（最短の組でも 14.07in）ので、' / ' で分けると 3 行になる。
+//        2 行に入る改行位置は、spec の順のままでは文献の途中の「…Circulation」の後だけ（1 行目 10.02in）。
+//        著者名の後（「Thompson A, et al.」の後）で分けると 2 行目が 12.53in になり入らない。
+//        さらに 2 行目が 13.03in になるため（2024 AHA/ACC）を外す（2 行目 10.93in）。
 // ---------------------------------------------------------------------------
 const SOURCE_DEVIATIONS = {
   S4: {
-    drop: ['（2021）', '（2025）'],
+    replace: [['（2021） / 日本麻酔科学会 悪性高熱症管理ガイドライン', '（2021）・悪性高熱症管理ガイドライン']],
     items: [
       'ASA Practice Advisory for Preanesthesia Evaluation. Anesthesiology 2012;116:522-538',
-      '日本麻酔科学会 周術期禁煙プラクティカルガイド',
-      '日本麻酔科学会 悪性高熱症管理ガイドライン',
+      '日本麻酔科学会 周術期禁煙プラクティカルガイド（2021）・悪性高熱症管理ガイドライン（2025）',
     ],
   },
   S8: {
@@ -106,11 +106,15 @@ function sourcesOf(id) {
   if (!raw) return undefined;
   const dev = SOURCE_DEVIATIONS[id];
   if (!dev) return raw.split(' / ');
-  // 検査: 外した（）を除けば spec の sources 行と同じであること（改行位置の空白 1 個を除く）
+  // 検査: 外した（）・置き換えを当てれば spec の sources 行と同じであること（改行位置の空白 1 個を除く）
   let want = raw;
-  for (const d of dev.drop) {
+  for (const d of dev.drop || []) {
     if (!want.includes(d)) throw new Error(`SOURCE_DEVIATIONS ${id}: spec の出典に「${d}」がありません`);
     want = want.replace(d, '');
+  }
+  for (const [from, to] of dev.replace || []) {
+    if (!want.includes(from)) throw new Error(`SOURCE_DEVIATIONS ${id}: spec の出典に「${from}」がありません`);
+    want = want.replace(from, to);
   }
   const got = dev.items.join(dev.wrapInside ? ' ' : ' / ');
   if (got !== want) throw new Error(`SOURCE_DEVIATIONS ${id}: 出典が spec と違います\n  spec: ${want}\n  got : ${got}`);
@@ -122,17 +126,19 @@ function sourcesOf(id) {
 // ---------------------------------------------------------------------------
 /**
  * spec からのずれ（deviations）。[元, 後]。build の最後に一覧を出力する。
- *  - S6 III の例: 表（見出し行＋6 行）と表の下の注記（E）を 1.85〜6.75in に入れるには、表を 4.26in
- *    （1 行 0.367in × 10 行＋余白）以下にする必要がある。原文のままだと III の例の 2 行目
- *    「定期透析中、3 か月より前の心筋梗塞・脳卒中・ステント」が 8.85in で、列幅を目いっぱい
- *    （分類 0.86 / 定義 2.91 / 例 8.43in）にしても 8.26in に入らず 3 行になり、表が 4.63in になる
- *    （注記を含めて 7.18in まで下がり、出典行に重なる）。「定期」の 2 字を外して 2 行に収める。
- *    定期透析をしていない末期腎不全（IV の例）との区別はノートに原文のまま残っている。
+ *  - S6 III の例（語は削らず、「COPD」の位置だけ 2 番目 → 4 番目に移す）:
+ *    表（見出し行＋6 行）と表の下の注記（E）を 1.85〜6.75in に入れるには、表を 4.26in
+ *    （1 行 0.367in × 10 行＋余白）以下、つまり III の行を 2 行にする必要がある。
+ *    spec の順のまま 2 行にすると、どこで分けても長いほうの行が 25.86 字分以上
+ *    （「定期透析中、3 か月より前の心筋梗塞・脳卒中・ステント」8.85in）になり、定義列（「（機能制限あり）」が
+ *    入る 2.93in）と分類列を引いた例の列（8.27in、使える幅 8.10in）に入らない。3 行にすると表が 4.63in になり
+ *    注記が出典行に重なる。「定期」を外すと意味が変わる（定期透析をしていない末期腎不全は IV）ので外さない。
+ *    COPD を「定期透析中、」の後に移すと 2 行（8.01in / 7.91in）に入る。例の並び（順序に意味はない）だけの変更。
  */
 const DEVIATIONS = {
   S6: [[
     '不良な糖尿病・高血圧、COPD、BMI 40 以上、定期透析中、3 か月より前の心筋梗塞・脳卒中・ステント',
-    '不良な糖尿病・高血圧、COPD、BMI 40 以上、透析中、3 か月より前の心筋梗塞・脳卒中・ステント',
+    '不良な糖尿病・高血圧、BMI 40 以上、定期透析中、COPD、3 か月より前の心筋梗塞・脳卒中・ステント',
   ]],
 };
 function quotedOf(id) {
@@ -239,6 +245,19 @@ function checkBottom(s, id, what, bottom) {
   console.log(`  ${id} ${what}: bottom ${r3(bottom)} (limit ${r3(bottomOf(s))})`);
 }
 
+/**
+ * 箇条書きの段落後の間隔(pt)を、本文の下端まで使い切る最大の値にする（minGap 以上）。
+ * 高さは lint 式と実機メイリオ推定（1 行 1.5em）の大きい方（heightFor）で測る。
+ * LibreOffice の描画は代替フォントで行の高さが低く、下に空きが残って見えるが、PowerPoint では下端近くまで埋まる。
+ */
+function fillGap(s, id, y, n, size, minGap) {
+  let gap = minGap;
+  while (y + heightFor(n, size, gap + 1) <= bottomOf(s) + 1e-6) gap++;
+  if (y + heightFor(n, size, gap) > bottomOf(s) + 1e-6) throw new Error(`${id}: 箇条書きが下端に入りません（gap ${gap}pt）`);
+  console.log(`  ${id}: bullet gap ${gap}pt`);
+  return gap;
+}
+
 /** 箇条書き（1項目1行）。戻り値は下端 */
 function bulletList(s, id, items, o) {
   items.forEach(t => rec(id, t));
@@ -274,6 +293,7 @@ function flowArrow(s, x1, y1, x2, y2, o = {}) {
  *  - items: 各項目 = 行配列（行は文字列 or run 配列）
  *  - sep: true なら項目の間に細い区切り線（項目は枠の中で均等に配る）
  *  - marker: true なら項目を箇条書き（•）にして上から gap(pt) 間隔で並べる
+ *  - padR / padB: 文字枠の右・下の余白（既定は pad）。文字枠の幅の推定（lint 式）だけに効き、箱は変わらない
  */
 const CARD = { pad: 0.18, titleSize: 26, titleGap: 0.12 };
 /** 区切り線つきカードの高さ（項目間を g にするとき） */
@@ -284,13 +304,14 @@ function sepCardH(c, g) {
 }
 function itemCard(s, id, c) {
   const pad = c.pad != null ? c.pad : CARD.pad, ts = c.titleSize || CARD.titleSize, size = c.size || 24;
+  const padR = c.padR != null ? c.padR : pad, padB = c.padB != null ? c.padB : pad;
   s.box({ x: c.x, y: c.y, w: c.w, h: c.h, fill: C.bg, radius: 0.08 });
-  const iw = r3(c.w - 2 * pad);
+  const iw = r3(c.w - pad - padR);
   const th = heightFor(1, ts, 0);
   s.text([c.title], { x: r3(c.x + pad), y: r3(c.y + pad), w: iw, h: th, size: ts, bold: true, color: c.titleColor || C.dark });
   rec(id, c.title);
   const top = c.y + pad + th + (c.titleGap != null ? c.titleGap : CARD.titleGap);
-  const bottom = c.y + c.h - pad;
+  const bottom = c.y + c.h - padB;
   if (c.marker) {
     const flat = c.items.map(lines => {
       if (lines.length !== 1) throw new Error(`${id} カード「${c.title}」: 箇条書きの項目は1行`);
@@ -412,29 +433,34 @@ async function main() {
   {
     const id = 'S3';
     const s = contentSlide(deck, id, 0);
-    // 箱は同じ幅 2.1in。22pt の「カルテを読む」（推定 2.053in）が 1 行に入る（実寸 1.83in で左右に約 0.13in あく）。
-    // 箱の間 0.43in に矢印。補足は 22pt で箱と同じ幅に入るよう語句の切れ目で 2〜3 行に分ける（中央揃え）。
+    // 箱は同じ幅 2.06in。22pt 太字の「カルテを読む」（推定 2.053in、実寸約 1.83in）が 1 行に入る最小の幅。
+    // 補足は 22pt・中央揃えで、箱より広い 2.40in の枠に入れる（7 字の「必要なものだけ」「申し送り、記録」が 1 行に入る幅）。
+    // 補足の枠どうしが本文幅 12.23in に収まるよう、箱の間隔（ピッチ）は (12.23 − 2.40) / 4 = 2.4575in、
+    // 箱の間 0.3975in に矢印（箱の端から左右 0.1in あける）。
+    // 補足を 1 行にするには「主科の記録、既往、検査、内服」で 4.79in 要り、ピッチ 2.46in では入らない（22pt 未満は不可）。
+    // 語句の切れ目（「、」の後）で分け、箱1 は 3 行（6 字を超える 2 行の組がない）、箱4 は 1 行、ほかは 2 行。
     const steps = [
-      { label: 'カルテを読む', sub: brk('主科の記録、既往、検査、内服', '既往', '内服') },
+      { label: 'カルテを読む', sub: brk('主科の記録、既往、検査、内服', '既往', '検査') },
       { label: '問診', sub: brk('麻酔歴、薬、運動耐容能', '運動') },
       { label: '診察', sub: brk('気道、心肺、全身', '全身') },
-      { label: '検査を選ぶ', sub: brk('必要なものだけ', 'もの') },
-      { label: '計画と説明', sub: brk('同意、申し送り、記録', '申し送り', '記録') },
+      { label: '検査を選ぶ', sub: ['必要なものだけ'] },
+      { label: '計画と説明', sub: brk('同意、申し送り、記録', '申し送り') },
     ];
-    const n = steps.length, bw = 2.1, g = (BW - n * bw) / (n - 1);
-    const bh = 1.0, subGap = 0.3, subPt = 22, subLine = 4;
+    const n = steps.length, bw = 2.06, sw = 2.40;
+    const pitch = (BW - sw) / (n - 1), g = pitch - bw, off = (sw - bw) / 2;
+    const bh = 1.0, subGap = 0.3, subPt = 22, subLine = 4, arrowPad = 0.1;
     const subH = Math.max(...steps.map(st => heightFor(st.sub.length, subPt, subLine)));
     const groupH = bh + subGap + subH;
     const by = r2(TOP + (bottomOf(s) - TOP - groupH) / 2 - 0.05);   // 縦はほぼ中央
     steps.forEach((st, i) => {
-      const x = r3(X0 + i * (bw + g));
+      const sx = r3(X0 + i * pitch), x = r3(sx + off);
       s.box({ x, y: by, w: bw, h: bh, fill: C.blue, radius: 0.1, text: st.label, size: 22, bold: true, color: C.white, margin: 0 });
       rec(id, st.label);
-      s.text(st.sub, { x, y: r2(by + bh + subGap), w: bw, h: heightFor(st.sub.length, subPt, subLine), size: subPt, gap: subLine, align: 'center', color: C.dark });
+      s.text(st.sub, { x: sx, y: r2(by + bh + subGap), w: sw, h: heightFor(st.sub.length, subPt, subLine), size: subPt, gap: subLine, align: 'center', color: C.dark });
       st.sub.forEach(l => rec(id, l));
-      if (i < n - 1) flowArrow(s, x + bw + 0.07, by + bh / 2, x + bw + g - 0.07, by + bh / 2, { hl: 0.15, hw: 0.24, width: 3 });
+      if (i < n - 1) flowArrow(s, x + bw + arrowPad, by + bh / 2, x + bw + g - arrowPad, by + bh / 2, { hl: 0.12, hw: 0.22, width: 3 });
     });
-    console.log(`  ${id}: flow box w=${bw} gap=${r3(g)} y=${by}`);
+    console.log(`  ${id}: flow box w=${bw} pitch=${r3(pitch)} gap=${r3(g)} arrow=${r3(g - 2 * arrowPad)} sub w=${sw} y=${by}`);
     checkBottom(s, id, 'flow', by + groupH);
   }
 
@@ -449,7 +475,7 @@ async function main() {
       '喫煙・飲酒、運動耐容能（階段 2 フロア分 ≈ 4 METs 超）',
       mark('併存疾患と『最近の変化』（胸痛、息切れ、失神）', ['『最近の変化』', ACCENT]),
       '妊娠の可能性、歯、いびき・無呼吸、逆流',
-    ], { y: 1.92, size: 28, gap: 12 });
+    ], { y: 1.92, size: 28, gap: fillGap(s, id, 1.92, 6, 28, 12) });
     checkBottom(s, id, 'bullets', b);
   }
 
@@ -482,7 +508,7 @@ async function main() {
       ['I', ['健康な患者'], ['非喫煙、飲酒なしかごく少量']],
       ['II', ['軽い全身疾患'], ['喫煙、妊娠、BMI 30〜40、良好な糖尿病・高血圧']],
       ['III', brk('重い全身疾患（機能制限あり）', '（機能'),
-        brk('不良な糖尿病・高血圧、COPD、BMI 40 以上、透析中、3 か月より前の心筋梗塞・脳卒中・ステント', '透析中')],   // deviation（DEVIATIONS を参照）
+        brk('不良な糖尿病・高血圧、BMI 40 以上、定期透析中、COPD、3 か月より前の心筋梗塞・脳卒中・ステント', 'COPD')],   // deviation（COPD の位置。DEVIATIONS を参照）
       ['IV', brk('常に生命を脅かす重い疾患', '重い'),
         brk('3 か月以内の心筋梗塞・脳卒中・ステント、進行中の虚血・重症弁膜症、敗血症、ショック', '進行中')],
       ['V', brk('手術なしでは生存が見込めない', '生存'), brk('破裂した大動脈瘤、大量外傷、mass effect のある頭蓋内出血', 'mass')],
@@ -497,9 +523,10 @@ async function main() {
       rows.push([cls(c), def.join('\n'), ex.join('\n')]);
     });
     // 列幅（spec の目安 1.4 / 4.0 / 6.8in から見直し。合計 12.2in）:
-    //  分類 0.86in =「分類」(0.684in)＋左右余白 12pt。定義 2.91in = 8 字の行「（機能制限あり）」など (2.737in)＋余白。
-    //  残りを例の列へ（8.43in、使える幅 8.263in）。II の例が 1 行、III・IV・V の例が 2 行に入る。
-    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [0.86, 2.91, 8.43] });
+    //  spec の列幅だと定義が 2 行、例が II・V で 2 行、III・IV で 3 行になり、表が 5.37in（注記を含め出典行の下まで）になる。
+    //  定義 2.93in = 8 字の行「（機能制限あり）」(2.738in)＋左右余白 12pt。分類 1.0in（「分類」0.684in の左右に約 0.08in）。
+    //  残りを例の列へ（8.27in、使える幅 8.103in）。II の例が 1 行、III・IV・V の例が 2 行に入る。
+    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [1.0, 2.93, 8.27] });
     console.log(`  ${id}: table rows ${t.rowH.join('/')} h=${t.h}`);
     // 表の下の注記（E）。表の下端から 0.24in あけ、本文の下端 6.75in で止める。
     // 枠の高さは lint 式（22pt 1 行 0.40in）。実機メイリオの行送り（0.46in）より低いが、上揃えで下に何もないため見た目は変わらない。
@@ -520,7 +547,7 @@ async function main() {
       '評価者でばらつく。公式の『例』を見て合わせる',
       mark('危機的偶発症の死亡 I 0.32 → IV 70.20／1 万麻酔（JSA 2000 年）', ['I 0.32', C.blue], ['IV 70.20', ACCENT]),
       '分類が目的ではない。計画と説明につなぐ',
-    ], { y: 1.98, size: 24, gap: 28 });
+    ], { y: 1.98, size: 24, gap: fillGap(s, id, 1.98, 5, 24, 28) });
     checkBottom(s, id, 'bullets', b);
   }
 
@@ -528,12 +555,20 @@ async function main() {
   {
     const id = 'S8';
     const s = contentSlide(deck, id, 3);
-    // 22pt の箇条書き。幅は中身から: 左「再測定で血圧 180/110 mmHg 以上」(5.153in)、右「主科：延期の不利益を一緒に考える」(5.475in)
-    // ＋行頭記号 0.35in＋左右余白 0.15in。残りを左右に配る。
-    const pad = 0.15, wR = 6.13, wL = r3(BW - GAP - wR);
+    // 22pt の箇条書き。2 枚は同じ幅 (12.23 − 0.24) / 2 = 5.995in。
+    // 最長の行は右の「主科：延期の不利益を一緒に考える」（推定 5.475in、実寸約 4.89in）＋行頭記号 0.35in。
+    // 左と上の余白は 0.15in、文字枠の右の余白は 0.02in（推定幅を入れるため。実寸では右に約 0.6in あく）。
+    // 行間（段落後の間隔）は 2 枚とも同じ値にし、左の 7 項目が入る最大の値をとる。2 枚とも上詰め。
+    const pad = 0.15, padR = 0.02, padB = 0.1, titleGap = 0.08, w = r3((BW - GAP) / 2);
     const cy = TOP, ch = r2(bottomOf(s) - cy);
+    const room = ch - pad - padB - heightFor(1, CARD.titleSize, 0) - titleGap;
+    let gap = 0;
+    while (heightFor(7, 22, gap + 1) <= room + 1e-6) gap++;
+    if (gap < 4) throw new Error(`${id}: 箇条書きの行間 ${gap}pt が小さすぎます`);
+    console.log(`  ${id}: cards w=${w} h=${ch} bullet gap=${gap}pt`);
+    const geo = { y: cy, w, h: ch, pad, padR, padB, titleGap, size: 22, gap, marker: true };
     itemCard(s, id, {
-      x: X0, y: cy, w: wL, h: ch, pad, title: '延期して評価・治療する', titleColor: ACCENT, size: 22, gap: 4, marker: true,
+      ...geo, x: X0, title: '延期して評価・治療する', titleColor: ACCENT,
       items: [
         ['新しい胸痛・失神・息切れの悪化'],
         ['未評価の心雑音、新しい不整脈'],
@@ -545,7 +580,7 @@ async function main() {
       ],
     });
     itemCard(s, id, {
-      x: r3(X0 + wL + GAP), y: cy, w: wR, h: ch, pad, title: '相談する相手', titleColor: C.blue, size: 22, gap: 30, marker: true,
+      ...geo, x: r3(X0 + w + GAP), title: '相談する相手', titleColor: C.blue,
       items: [
         ['上級医（遠隔でも相談できる）'],
         ['主科：延期の不利益を一緒に考える'],
@@ -583,7 +618,7 @@ async function main() {
       '診察：気道、心肺、全身。自分の目と手で確かめる',
       'ASA-PS は全身状態の分類。手術リスクは別に評価',
       '新しい症状・未評価の異常は延期して相談。記録を残す',
-    ], { y: 1.98, size: 28, gap: 22 });
+    ], { y: 1.98, size: 28, gap: fillGap(s, id, 1.98, 5, 28, 22) });
     checkBottom(s, id, 'bullets', b);
   }
 
@@ -593,7 +628,9 @@ async function main() {
     list.forEach(([from, to]) => console.log(`    ${id}: 「${from}」→「${to}」`));
   }
   for (const [id, d] of Object.entries(SOURCE_DEVIATIONS)) {
-    console.log(`    ${id} 出典: ${d.drop.map(x => `「${x}」`).join('')}を外す${d.wrapInside ? '（文献の途中で改行）' : ''}`);
+    for (const x of d.drop || []) console.log(`    ${id} 出典: 「${x}」を外す`);
+    for (const [from, to] of d.replace || []) console.log(`    ${id} 出典: 「${from}」→「${to}」`);
+    if (d.wrapInside) console.log(`    ${id} 出典: 文献の途中（${d.items[0].split(' ').pop()} の後）で改行`);
   }
   const res = await deck.save({ render: RENDER, renderDir: RENDER_DIR });
   if (res.violations !== 0 || res.validateOk === false) process.exitCode = 1;

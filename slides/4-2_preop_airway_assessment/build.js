@@ -9,6 +9,15 @@
  * render（PDF/JPG）はリポジトリの外に出す: DECK_RENDER_DIR（未指定なら OS の一時ディレクトリ）。
  *
  * 図はすべてネイティブ図形（箱・freeform）。図のラベルは図の外に置く。
+ *
+ * QA 反映（2 回目）:
+ *  - S4 表の列幅を 3.05 / 4.95 / 4.2in に（「甲状オトガイ間距離」を 1 行に）。セル幅は実機メイリオの字幅で検査。
+ *  - S5 カードを等幅（2.877in）にし、模式図をカードの中心にそろえる。口蓋弓を左右の柱として描き、
+ *    class I の図に「軟口蓋」「口蓋垂」「口蓋弓」の引き出しラベルを付ける（ラベルは図の外）。
+ *  - S3・S6・S8 のカード: 2 行の項目は 1 行ずつ枠を置き、項目内の行送りを 1.2 em に詰めて項目間を広げる。
+ *    S6 の「Obese：…」は左カードを広げて 1 行に。
+ *  - S2・S8 の出典は（ASA 2022）を残し、（DAS 2015）を外す（3 文献は区切りだけでは 2 行に入らない）。
+ *  - 警告の強調はバーミリオン太字にそろえ、赤（C00000）は S6 の強調ボックスだけに使う。
  */
 const fs = require('fs');
 const os = require('os');
@@ -107,15 +116,42 @@ function mark(line, ...marks) {
 const runText = l => (Array.isArray(l) ? l.map(r => (typeof r === 'string' ? r : r.text)).join('') : String(l));
 
 // ---------------------------------------------------------------------------
+// 実機メイリオの字幅の目安（欧文は Verdana 系で広い）。4-12・3-12 の build.js と同じ表。
+// 出典行と表のセル幅の検査に使う（lint の推定器 measure は和文 ×1.12 で厚めに見積もる）。
+// ---------------------------------------------------------------------------
+const LATIN_EM = {
+  ' ': 0.352, '.': 0.364, ',': 0.364, ':': 0.454, ';': 0.454, '-': 0.454, '/': 0.454, '%': 1.076, '(': 0.454, ')': 0.454,
+  0: 0.636, 1: 0.636, 2: 0.636, 3: 0.636, 4: 0.636, 5: 0.636, 6: 0.636, 7: 0.636, 8: 0.636, 9: 0.636,
+  a: 0.601, b: 0.623, c: 0.521, d: 0.623, e: 0.596, f: 0.352, g: 0.623, h: 0.633, i: 0.274, j: 0.344, k: 0.592, l: 0.274,
+  m: 0.973, n: 0.633, o: 0.607, p: 0.623, q: 0.623, r: 0.427, s: 0.521, t: 0.394, u: 0.633, v: 0.592, w: 0.818,
+  x: 0.592, y: 0.592, z: 0.525,
+  A: 0.684, B: 0.686, C: 0.698, D: 0.771, E: 0.632, F: 0.575, G: 0.775, H: 0.751, I: 0.421, J: 0.455, K: 0.693,
+  L: 0.557, M: 0.843, N: 0.748, O: 0.787, P: 0.603, Q: 0.787, R: 0.695, S: 0.684, T: 0.616, U: 0.732, V: 0.684,
+  W: 0.989, X: 0.685, Y: 0.615, Z: 0.685,
+};
+/** 実機メイリオの推定幅（インチ）。和文は 1 em、欧文は LATIN_EM（太字は欧文を ×1.15） */
+function realW(text, size, bold) {
+  let e = 0;
+  for (const ch of String(text)) {
+    const o = ch.codePointAt(0);
+    e += o <= 0x24F ? (LATIN_EM[ch] != null ? LATIN_EM[ch] : 0.65) * (bold ? 1.15 : 1) : 1.0;
+  }
+  return e * size / 72;
+}
+
+// ---------------------------------------------------------------------------
 // 出典: spec の sources 行を 16pt・幅 11.6in の 2 行に収める
 //  0) ライブラリ既定（' / ' の区切りでだけ改行）で 2 行に入ればそのまま渡す。
 //  1) 文言はそのままで、文献の途中の語の切れ目で改行する（著者「et al.」の後 > 誌名と年の間 > その他の空白）。
 //  2) 入らなければ区切りの前後の空白を詰める（' / ' → '/'）。
-//  3) それでも入らなければ（）内の補足を後ろの文献から外す（外した数が最小の形。空白は詰めない形を優先）。
-//  文献そのものは落とさない。元と違う形にしたものは DEVIATIONS に記録してビルド時に表示する。
+//  3) それでも入らなければ（）内の補足を外す（外す数が最小の形。空白は詰めない形を優先。
+//     同じ数なら前の文献から外す: 後ろの（ASA 2022）は S3・S9 にも出るので残してそろえる）。
+//  文献そのものは落とさない。各行は lint の推定器と実機メイリオの字幅の両方で 11.6in に入ることを確かめる。
+//  元と違う形にしたものは DEVIATIONS に記録してビルド時に表示する。
 // ---------------------------------------------------------------------------
 const SRC = LAYOUT.source;
 const DEVIATIONS = [];
+const srcFits = l => fits(l, SRC.size, SRC.w) && realW(l, SRC.size) <= SRC.w - 0.05;
 function libLines(items) {
   const lines = [];
   for (const it of items) {
@@ -126,7 +162,6 @@ function libLines(items) {
   return lines;
 }
 function split2(str, sep) {
-  const fitsLine = l => fits(l, SRC.size, SRC.w);
   const cands = [];
   for (let i = 1; i < str.length; i++) {
     let a, b, rank;
@@ -139,11 +174,18 @@ function split2(str, sep) {
       if (a.endsWith('/') || b.startsWith('/')) continue;
     } else continue;
     a = a.trim(); b = b.trim();
-    if (a && b && fitsLine(a) && fitsLine(b)) cands.push({ a, b, rank });
+    if (a && b && srcFits(a) && srcFits(b)) cands.push({ a, b, rank });
   }
   if (!cands.length) return null;
   cands.sort((x, y) => x.rank - y.rank || y.a.length - x.a.length);
   return [cands[0].a, cands[0].b];
+}
+/** 配列 arr から r 個を選ぶ組み合わせ（辞書順） */
+function combos(arr, r, from = 0) {
+  if (r === 0) return [[]];
+  const out = [];
+  for (let i = from; i <= arr.length - r; i++) for (const rest of combos(arr, r - 1, i + 1)) out.push([arr[i], ...rest]);
+  return out;
 }
 /** override: spec の sources 行の代わりに使う形（指定時は DEVIATIONS に記録） */
 function sourcesFor(id, override) {
@@ -155,22 +197,25 @@ function sourcesFor(id, override) {
     return lines;
   };
   const items = base.split(' / ');
-  if (items.every(it => fits(it, SRC.size, SRC.w)) && libLines(items).length <= 2) {
-    if (override) note(base, libLines(items));
-    return items;
+  if (items.every(srcFits)) {
+    const ll = libLines(items);
+    if (ll.length <= 2 && ll.every(srcFits)) {
+      if (override) note(base, ll);
+      return items;
+    }
   }
   let r = split2(base, ' / ');
   if (r) return note(base, r);
   r = split2(items.join('/'), '/');
   if (r) return note(items.join('/'), r);
-  const cut = items.slice();
-  for (let k = cut.length - 1; k >= 0; k--) {
-    if (!/（[^）]*）$/.test(cut[k])) continue;
-    cut[k] = cut[k].replace(/（[^）]*）$/, '');
+  const paren = items.map((it, k) => (/（[^）]*）$/.test(it) ? k : -1)).filter(k => k >= 0);
+  for (let n = 1; n <= paren.length; n++) {
     for (const sep of [' / ', '/']) {
-      const s = cut.join(sep);
-      r = split2(s, sep);
-      if (r) return note(s, r);
+      for (const cut of combos(paren, n)) {
+        const s = items.map((it, k) => (cut.includes(k) ? it.replace(/（[^）]*）$/, '') : it)).join(sep);
+        r = split2(s, sep);
+        if (r) return note(s, r);
+      }
     }
   }
   throw new Error(`${id}: 出典が 2 行に収まりません`);
@@ -222,10 +267,14 @@ function bulletCol(s, items, o) {
 // ---------------------------------------------------------------------------
 // 見出し＋項目のカード（行頭記号つき）を横に並べる（S3・S6・S8）
 //  - 幅: 各カードの最長行（ライブラリ推定）＋行頭記号ぶんを確保し、余りを等分する。
-//  - 1 項目を 2 行に割ったときは 2 行目を記号の右にぶら下げる（項目の区切りが見える）。
+//  - 1 項目を 2 行に割ったときは 1 行ずつ枠を置き、2 行目を記号の右にぶら下げる。項目内の行送りは
+//    WRAP（1.2 em = 26.4pt。tightTable と同じ）に詰め、項目と項目の間（g）を広く取る（項目の区切りが見える）。
+//    各行の枠は 1 行ぶんの高さ（実機メイリオ 1.5 em）なので、2 行目の枠は 1 行目の枠に少し重なる（文字同士は重ならない）。
 //  - alignRows: 項目 i の上端を全カードでそろえる（項目数が同じとき）。
 // ---------------------------------------------------------------------------
-const CARD = { padX: 0.2, padY: 0.12, titleSize: 24, size: 22, indent: 0.36, titleGap: 0.08, radius: 0.08 };
+const CARD = { padX: 0.15, padY: 0.12, titleSize: 24, size: 22, indent: 0.345, titleGap: 0.04, radius: 0.08 };
+const LINE1 = heightFor(1, CARD.size, 0);          // 1 行の枠の高さ（0.46in）
+const WRAP = r3(CARD.size * 1.2 / 72);              // 項目内の行送り（0.367in）
 function cardRow(s, cards, o) {
   const n = cards.length;
   const need = cards.map(c => Math.max(
@@ -238,7 +287,7 @@ function cardRow(s, cards, o) {
   const h = r3(o.bottom - o.y);
   const titleH = heightFor(1, CARD.titleSize, 0);
   const bodyAvail = h - 2 * CARD.padY - titleH - CARD.titleGap;
-  const itemH = lines => heightFor(lines.length, CARD.size, 0);
+  const itemH = lines => LINE1 + (lines.length - 1) * WRAP;
   const nItems = cards[0].items.length;
   if (o.alignRows && cards.some(c => c.items.length !== nItems)) throw new Error(`p${s.page}: alignRows は項目数が同じカードのみ`);
   const slotsOf = c => (o.alignRows
@@ -259,16 +308,19 @@ function cardRow(s, cards, o) {
     const tx = r3(x + CARD.padX), iw = r3(w - 2 * CARD.padX);
     s.text([c.title], { x: tx, y: r3(o.y + CARD.padY), w: iw, h: titleH, size: CARD.titleSize, bold: true, color: c.titleColor });
     let y = o.y + CARD.padY + titleH + CARD.titleGap;
+    const pitch1 = [];
     c.items.forEach((lines, k) => {
-      const ih = itemH(lines);
-      const iy = r3(y + (slots[k] - ih) / 2);
-      s.text('•', { x: tx, y: iy, w: CARD.indent, h: heightFor(1, CARD.size, 0), size: CARD.size, color: C.dark });
-      s.text(lines, { x: r3(tx + CARD.indent), y: iy, w: r3(iw - CARD.indent), h: ih, size: CARD.size, color: C.dark });
+      const iy = y + (slots[k] - itemH(lines)) / 2;
+      s.text('•', { x: tx, y: r3(iy), w: CARD.indent, h: LINE1, size: CARD.size, color: C.dark });
+      lines.forEach((ln, j) => {
+        s.text([ln], { x: r3(tx + CARD.indent), y: r3(iy + j * WRAP), w: r3(iw - CARD.indent), h: LINE1, size: CARD.size, color: C.dark });
+      });
+      if (lines.length === 1 && k + 1 < c.items.length && c.items[k + 1].length === 1) pitch1.push(r2(slots[k] + g));
       y += slots[k] + g;
     });
     const end = y - g;
     if (end > o.y + h - CARD.padY + 1e-6) throw new Error(`p${s.page} カード「${runText(c.title)}」: 本文の下端 ${r3(end)}in > ${r3(o.y + h - CARD.padY)}in`);
-    info.push(`w ${w}in・項目間 ${r2(g)}in`);
+    info.push(`w ${w}in・項目間 ${r2(g)}in・1 行項目のピッチ ${pitch1.length ? Math.min(...pitch1) : '-'}in・下余白 ${r2(o.y + h - end)}in`);
     x += w + GAP;
   });
   console.log(`  p${s.page} カード: ${info.join(' / ')}、高さ ${h}in（${o.y}〜${r3(o.y + h)}in）`);
@@ -279,12 +331,16 @@ function cardRow(s, cards, o) {
  * （見出し行 D9D9D9・太字、罫線 BFBFBF 1pt、上下中央）で、行間だけを固定値 LS pt（= 1.2 em）に詰める。
  * 見出し行も本文と同じ左揃え（列の頭をそろえる）。
  * s.table は行高を実機メイリオの 1.5 em で取るため、7 行の表が本文ゾーン（出典 2 行時 1.85〜6.45in）に入らない。
- * セル幅の検査は decklib と同じ推定器（lint 式、全角 ×1.12）で行い、重なり検査用の登録も同じく行う。
+ * セル幅の検査は実機メイリオの字幅（realW。和文 1 em・欧文は Verdana 系の表、太字の欧文 ×1.15）＋余裕 SAFE で行う
+ * （2-4 の realTable と同じ考え方）。lint（slide_lint.py）は表のセルを検査しない。lint 式（全角 ×1.12）だと
+ * 「甲状オトガイ間距離」（太字 9 字・実寸 2.75in）を 1 行にする 1 列目 3.05in と、Mallampati の行を 1 行に保つ
+ * 2 列目 4.95in（「座位、開口、舌を出す、発声なし」15 字・実寸 4.58in）が両立しない。重なり検査用の登録は decklib と同じ。
  * cell: 文字列（'\n' で改行）| {text, color, bold, align}
  */
 function tightTable(s, rows, o) {
   const size = o.size || 22, LS = o.lineSpacing || size * 1.2;
   const m = o.margin || [3, 6, 3, 6];   // pt: 上, 右, 下, 左
+  const SAFE = 0.12;                    // 実機推定の幅に対する余裕（インチ）
   const colW = o.colW, nCol = colW.length;
   const w = colW.reduce((a, b) => a + b, 0);
   const rowH = [];
@@ -296,15 +352,15 @@ function tightTable(s, rows, o) {
       const c = typeof cell === 'string' ? { text: cell } : cell;
       const lines = c.text.split('\n');
       const avail = colW[ci] - (m[1] + m[3]) / 72;
+      const color = c.color || C.dark, bold = c.bold != null ? c.bold : head;
       lines.forEach(l => {
-        const fi = fitInfo(l, size, avail);
-        if (!fi.ok) {
+        const real = realW(l, size, bold);
+        if (real + SAFE > avail + 1e-9) {
           throw new Error(`p${s.page} 表 行${ri + 1}列${ci + 1}「${l}」がセル幅に収まりません` +
-            `（推定 ${fi.needIn}in > ${avail.toFixed(3)}in、約${fi.overChars}字オーバー）`);
+            `（実機推定 ${real.toFixed(3)}in + 余裕 ${SAFE} > 内幅 ${avail.toFixed(3)}in）`);
         }
       });
       maxLines = Math.max(maxLines, lines.length);
-      const color = c.color || C.dark, bold = c.bold != null ? c.bold : head;
       return {
         text: lines.map((l, li) => ({
           text: l,
@@ -334,25 +390,26 @@ function tightTable(s, rows, o) {
 }
 
 // ---------------------------------------------------------------------------
-// 口の模式図（S5）。正面から見た開口: 口腔（淡色）・咽頭の入口（暗色のアーチ）・口蓋垂・舌。
-//  アーチの縁（軟口蓋の縁と左右の口蓋弓）と口蓋垂は青の線、舌はバーミリオンの淡色。
+// 口の模式図（S5）。正面から見た開口: 口腔（淡色＝硬口蓋）・軟口蓋（アーチ形の帯）・左右の口蓋弓（柱）・
+//  咽頭の入口（暗色）・口蓋垂・舌。口蓋弓と口蓋垂は青の縁取りで、軟口蓋の帯と色を変えて描き分ける。
 //  class が上がるほど舌の上縁が上がり、口蓋弓 → 口蓋垂 → 軟口蓋の順に隠れる。
 //  上下の位置は口の高さに対する割合 f（上端 0・下端 1）。
 // ---------------------------------------------------------------------------
 const MOUTH = {
-  hard: 'FBE9DF', soft: 'F2C4B0', dark: '404040', tongue: 'E8A673', lip: '595959',
+  hard: 'FBE9DF', soft: 'EDB8A0', pillar: 'D98A7C', dark: '404040', tongue: 'E8A673', lip: '595959',
   fSoft: 0.2,      // 軟口蓋の帯の上端（ここより上が硬口蓋）
-  fTop: 0.33,      // アーチの頂点（軟口蓋の縁の中央。口蓋垂の付け根）
+  fTop: 0.3,       // 咽頭の入口のアーチの頂点（軟口蓋の縁の中央。口蓋垂の付け根）
   fUvula: 0.5,     // 口蓋垂の先端
-  fShoulder: 0.62, // アーチの肩（ここから下が口蓋弓の柱）
-  fBottom: 0.86,   // 柱の下端（舌に隠れる）
-  halfW: 0.36,     // アーチの半幅（口の半幅に対する割合）
-  softW: 0.13,     // 軟口蓋・口蓋弓の帯の幅（アーチの外側へ。in）
-  levels: { 1: 0.8, 2: 0.6, 3: 0.42, 4: 0.17 },   // 舌の上縁（両端の高さ）
+  fShoulder: 0.6,  // アーチの肩（軟口蓋の帯はここまで。ここから下が口蓋弓の柱）
+  fBottom: 0.9,    // 柱の下端（舌に隠れる）
+  halfW: 0.36,     // 咽頭の入口の半幅（口の半幅に対する割合）
+  pillarW: 0.1,    // 口蓋弓（柱）の幅（in）
+  bandOut: 0.04,   // 軟口蓋の帯が柱より外へ出る幅（in）
+  levels: { 1: 0.85, 2: 0.58, 3: 0.4, 4: 0.17 },  // 舌の上縁（両端の高さ）。II は柱を隠し口蓋垂の先は残す
   dome: 0.04,      // 舌の上縁の中央の盛り上がり（in）
-  uvTopHalfW: 0.1, uvTipR: 0.075,                  // 口蓋垂の付け根の半幅・先端の丸みの半径（in）
+  uvTopHalfW: 0.075, uvTipR: 0.055,                // 口蓋垂の付け根の半幅・先端の丸みの半径（in）
 };
-/** アーチ（下端 fBottom の左 → 肩 → 頂点 fTop の弧 → 肩 → 右下）。half: 半幅（in） */
+/** アーチ（下端 yBottom の左 → 肩 → 頂点 yTop の弧 → 肩 → 右下）。half: 半幅（in） */
 function archPts(cx, half, yTop, yShoulder, yBottom) {
   const pts = [[r3(cx - half), r3(yBottom)], [r3(cx - half), r3(yShoulder)]];
   for (let k = 1; k < 24; k++) {
@@ -362,6 +419,18 @@ function archPts(cx, half, yTop, yShoulder, yBottom) {
   pts.push([r3(cx + half), r3(yShoulder)], [r3(cx + half), r3(yBottom)]);
   return pts;
 }
+/** 上端を丸めた柱（x0〜x1、上端 yT〜下端 yB） */
+function pillarPts(x0, x1, yT, yB) {
+  const rr = (x1 - x0) / 2, xc = (x0 + x1) / 2;
+  const pts = [[r3(x0), r3(yB)], [r3(x0), r3(yT + rr)]];
+  for (let k = 1; k < 12; k++) {
+    const t = Math.PI - (Math.PI * k) / 12;
+    pts.push([r3(xc + rr * Math.cos(t)), r3(yT + rr - rr * Math.sin(t))]);
+  }
+  pts.push([r3(x1), r3(yT + rr)], [r3(x1), r3(yB)]);
+  return pts;
+}
+/** 模式図を描き、部位の引き出し先（class I で見える位置）を返す */
 function mouthFig(s, o) {
   const { cx, top, w, h, cls } = o;
   const rx = w / 2, ry = h / 2, cy = top + ry;
@@ -374,11 +443,16 @@ function mouthFig(s, o) {
   }
   // 口腔の天井（硬口蓋。淡色）
   s.polyline(ell, { color: MOUTH.hard, width: 1, closed: true, fill: MOUTH.hard });
-  // 軟口蓋と左右の口蓋弓（アーチの外側の帯。やや濃い色）
-  const a = MOUTH.halfW * rx, ys = Y(MOUTH.fShoulder), yB = Y(MOUTH.fBottom);
-  s.polyline(archPts(cx, a + MOUTH.softW, Y(MOUTH.fSoft), ys, yB), { color: MOUTH.soft, width: 1, closed: true, fill: MOUTH.soft });
-  // 咽頭の入口（暗色のアーチ）。縁＝軟口蓋の縁＋左右の口蓋弓（青）
-  s.polyline(archPts(cx, a, Y(MOUTH.fTop), ys, yB), { color: C.blue, width: 2.5, closed: true, fill: MOUTH.dark });
+  const a = MOUTH.halfW * rx, pw = MOUTH.pillarW, out = a + pw + MOUTH.bandOut;
+  const ys = Y(MOUTH.fShoulder), yB = Y(MOUTH.fBottom);
+  // 軟口蓋（咽頭の入口の上を覆うアーチ形の帯。肩まで）
+  s.polyline(archPts(cx, out, Y(MOUTH.fSoft), ys, ys), { color: MOUTH.soft, width: 1, closed: true, fill: MOUTH.soft });
+  // 咽頭の入口（暗色のアーチ）
+  s.polyline(archPts(cx, a, Y(MOUTH.fTop), ys, yB), { color: MOUTH.dark, width: 1, closed: true, fill: MOUTH.dark });
+  // 口蓋弓（左右の柱。軟口蓋の帯の肩から下へ）
+  const pT = ys - 0.03;
+  s.polyline(pillarPts(cx - a - pw, cx - a, pT, yB), { color: C.blue, width: 1.75, closed: true, fill: MOUTH.pillar });
+  s.polyline(pillarPts(cx + a, cx + a + pw, pT, yB), { color: C.blue, width: 1.75, closed: true, fill: MOUTH.pillar });
   // 口蓋垂（アーチの頂点から垂れる）
   const uw = MOUTH.uvTopHalfW, ur = MOUTH.uvTipR, yt = Y(MOUTH.fTop) - 0.01, yb = Y(MOUTH.fUvula) - ur;
   const uv = [[r3(cx - uw), r3(yt)], [r3(cx - ur), r3(yb)]];
@@ -405,6 +479,25 @@ function mouthFig(s, o) {
   s.polyline(tg, { color: C.vermilion, width: 2, closed: true, fill: MOUTH.tongue });
   // 口唇（輪郭）
   s.polyline(ell, { color: MOUTH.lip, width: 2.5, closed: true });
+  // 引き出し先: 軟口蓋の帯の右上（帯の中央の弧の 50°）・口蓋垂の中ほど・右の口蓋弓の見えている部分の中央
+  const midHalf = (a + out) / 2, midTop = (Y(MOUTH.fSoft) + Y(MOUTH.fTop)) / 2, t50 = (50 * Math.PI) / 180;
+  return {
+    right: cx + rx,
+    soft: [r3(cx + midHalf * Math.cos(t50)), r3(ys - (ys - midTop) * Math.sin(t50))],
+    uvula: [r3(cx + 0.02), r3((yt + Y(MOUTH.fUvula)) / 2)],
+    pillar: [r3(cx + a + pw / 2), r3((pT + Math.min(yl, yB)) / 2)],
+  };
+}
+/** 引き出し線（白の縁取り＋濃灰の線、先端に点）。暗色の上でも見える */
+function leader(s, x1, y1, x2, y2) {
+  s.polyline([[r3(x1), r3(y1)], [r3(x2), r3(y2)]], { color: C.white, width: 3.5 });
+  s.polyline([[r3(x1), r3(y1)], [r3(x2), r3(y2)]], { color: C.dark, width: 1.25 });
+  const d = [];
+  for (let k = 0; k < 16; k++) {
+    const t = (2 * Math.PI * k) / 16;
+    d.push([r3(x2 + 0.04 * Math.cos(t)), r3(y2 + 0.04 * Math.sin(t))]);
+  }
+  s.polyline(d, { color: C.white, width: 1, closed: true, fill: C.dark });
 }
 
 async function main() {
@@ -427,6 +520,9 @@ async function main() {
   }
 
   // 箇条書きのスライド（S2・S9 は 26pt、S7 は 1 行目が 26pt に入らないので 24pt）。行頭記号は bulletCol で黒に
+  //  （S7 の 1 行目「挿管困難は定義により約 2〜10%。9 割以上は予測されずに起きる」は 26pt で推定 11.89in ＞
+  //   記号を除いた幅 11.75in。行頭記号の枠は 26pt の「•」に 0.404in 要るので、これ以上は詰められない）。
+  // 強調の色: 要点はバーミリオン、補足の対比はブルー。危険の赤（C00000）は S6 の強調ボックスだけに使う。
   const BUL = { x: X0, w: 12.2 };
 
   // ===== S2 気道評価は何のため（箇条書き4行 + 強調ボックス） =====
@@ -480,8 +576,9 @@ async function main() {
     const s = deck.slide({ title: '診察：6 つの所見', chapter: 1, notes: notesOf(id), sources: sourcesFor(id) });
     const B = text => ({ text, bold: true });
     const cell = (str, ...breaks) => brk(id, str, ...breaks).join('\n');
-    // 列幅は spec の目安（2.8 / 5.2 / 4.2）から、2 列目の「座位、開口、舌を出す、発声なし」と
-    // 3 列目の「class III・IV（→ S5）」が 1 行に入るように配分しなおした（合計 12.2in）。
+    // 列幅は spec の目安（2.8 / 5.2 / 4.2）から、1 列目の「甲状オトガイ間距離」（太字 9 字）を 1 行に、
+    // Mallampati の行（2 列目「座位、開口、舌を出す、発声なし」・3 列目「class III・IV（→ S5）」）を 1 行に
+    // 保つ配分にした（3.05 / 4.95 / 4.2、合計 12.2in）。2 行のセルは語の切れ目で改行する。
     // 表の高さ（7 行で 4.63in）が 1.85〜6.45in に 0.03in 入らないので、上端を 1.82in にする
     // （金下線の下端 1.58in との間は 0.24in）。
     const TY = 1.82;
@@ -489,11 +586,11 @@ async function main() {
       [q(id, '所見'), q(id, 'どう見るか'), q(id, '困難を疑う目安')],
       [B(q(id, '開口')), q(id, '最大開口で上下の切歯の間'), cell('3 cm 未満（資料により 3〜4 cm）', '（資料')],
       [B(q(id, 'Mallampati')), q(id, '座位、開口、舌を出す、発声なし'), q(id, 'class III・IV（→ S5）')],
-      [B(cell('甲状オトガイ間距離', '間距離')), cell('頸部を伸展し、甲状軟骨上縁〜オトガイ', '甲状軟骨'), cell('6〜6.5 cm 未満（指 3 本未満）', '（指')],
+      [B(q(id, '甲状オトガイ間距離')), cell('頸部を伸展し、甲状軟骨上縁〜オトガイ', '甲状軟骨'), cell('6〜6.5 cm 未満（指 3 本未満）', '（指')],
       [B(q(id, '上唇咬合テスト')), q(id, '下の歯で上唇を噛めるか'), q(id, '噛めない（class III）')],
       [B(q(id, '頸部の動き')), q(id, '顎を胸につけ、次に上を向く'), cell('伸展が小さい、痛みで動かない', '痛み')],
       [B(q(id, '首・顎・歯')), cell('首の太さ、小さい下顎、前歯の突出、ひげ', '前歯'), cell('太い首（特に肥満）、小顎、前突', '小顎')],
-    ], { x: X0, y: TY, colW: [2.72, 5.36, 4.12] });
+    ], { x: X0, y: TY, colW: [3.05, 4.95, 4.2] });
     console.log(`  p${s.page} 表: ${t.y}〜${r3(t.y + t.h)}in（行高 ${t.rowH.join(', ')}）`);
     if (t.y + t.h > BOT + 1e-6) throw new Error(`${id} 表の下端 ${r3(t.y + t.h)} > ${BOT}`);
   }
@@ -502,21 +599,23 @@ async function main() {
   {
     const id = 'S5';
     const s = deck.slide({ title: 'Mallampati 分類', chapter: 1, notes: notesOf(id), sources: sourcesFor(id) });
-    // カード幅: 本文を各 3 行にそろえるため、class I・II（1 行に全角 8 字）を広く、III・IV を残りの等分にする
-    // （4 枚とも 4 行にすると模式図の高さが 1in を切る）。文字は左右 0.15in の内側余白の中。
-    const padX = 0.15, pad = 0.12, tgap = 0.04;
+    // カードは 4 枚とも等幅（(12.23 − 0.24×3) / 4 = 2.877in）。模式図はカードの中心にそろえる。
+    // 本文（22pt）は 1 行に全角 8 字（推定 2.738in）入れるため、本文の枠だけ左右の内側余白を 0.065in にして
+    // 中央揃えにする（実寸 2.44in なので、見た目の左右の余白は約 0.22in）。見出しは内側余白 0.15in。
+    // class II は 8 字では「（口蓋弓は隠れる）」（9 字）が 1 行に入らないので、括弧の途中で改行する。
+    const cw = Math.floor(((BW - 3 * GAP) / 4) * 1000) / 1000;
+    const padX = 0.15, bodyPadX = 0.065, pad = 0.12, tgap = 0.04;
+    const bodyW = r3(cw - 2 * bodyPadX);
     const cards = [
       { cls: 1, title: q(id, 'class I'), color: C.blue, body: brk(id, '軟口蓋、口蓋弓、口蓋垂が全部見える', '口蓋垂', '全部') },
       { cls: 2, title: q(id, 'class II'), color: C.blue, body: brk(id, '軟口蓋、口峡、口蓋垂（口蓋弓は隠れる）', '口蓋垂', '隠れる') },
-      { cls: 3, title: q(id, 'class III'), color: C.vermilion, body: brk(id, '軟口蓋と口蓋垂の根元だけ', '口蓋垂', '根元') },
-      { cls: 4, title: q(id, 'class IV'), color: C.vermilion, body: brk(id, '軟口蓋が見えない（硬口蓋のみ）', '見えない', '（硬口蓋') },
+      { cls: 3, title: q(id, 'class III'), color: C.vermilion, body: brk(id, '軟口蓋と口蓋垂の根元だけ', '根元') },
+      { cls: 4, title: q(id, 'class IV'), color: C.vermilion, body: brk(id, '軟口蓋が見えない（硬口蓋のみ）', '（硬口蓋') },
     ];
-    const needIn = c => Math.max(measure(c.title, 24), ...c.body.map(l => measure(l, 22)));
-    const innerAll = BW - 3 * GAP - 8 * padX;
-    const wide = Math.ceil(Math.max(needIn(cards[0]), needIn(cards[1])) * 1000) / 1000;
-    const narrow = Math.floor(((innerAll - 2 * wide) / 2) * 1000) / 1000;
-    if (narrow < Math.max(needIn(cards[2]), needIn(cards[3])) - 1e-9) throw new Error(`${id}: class III・IV のカード幅が足りません`);
-    const inner = [wide, wide, narrow, narrow];
+    cards.forEach(c => {
+      if (!fits(c.title, 24, cw - 2 * padX)) throw new Error(`${id}: 見出し「${c.title}」が入りません`);
+      c.body.forEach(l => { if (!fits(l, 22, bodyW)) throw new Error(`${id}: 「${l}」が本文の幅 ${bodyW}in に入りません`); });
+    });
     const nLines = Math.max(...cards.map(c => c.body.length));
     const lineH = heightFor(1, 24, 0);
     const lineY = r3(BOT - lineH);
@@ -524,21 +623,36 @@ async function main() {
     const titleH = heightFor(1, 24, 0);
     const cardH = r3(pad + titleH + tgap + bodyH + pad);
     const cardY = r3(lineY - GAP - cardH);
-    const figTop = TOP, figH = r3(cardY - GAP - figTop), figW = 1.95;
+    const figTop = TOP, figH = r3(cardY - GAP - figTop), figW = 1.55;
     if (figH < 1.2) throw new Error(`${id}: 模式図の高さが ${figH}in しかありません`);
-    let x = X0;
+    const cxs = cards.map((_, i) => r3(X0 + i * (cw + GAP) + cw / 2));
+    let anchors = null;
     cards.forEach((c, i) => {
-      const cw = r3(inner[i] + 2 * padX);
-      x = r3(x);
-      mouthFig(s, { cx: r3(x + cw / 2), top: figTop, w: figW, h: figH, cls: c.cls });
+      const x = r3(X0 + i * (cw + GAP));
+      const an = mouthFig(s, { cx: cxs[i], top: figTop, w: figW, h: figH, cls: c.cls });
+      if (c.cls === 1) anchors = an;
       s.box({ x, y: cardY, w: cw, h: cardH, fill: C.bg, radius: 0.08 });
-      s.text([c.title], { x: r3(x + padX), y: r3(cardY + pad), w: inner[i], h: titleH, size: 24, bold: true, color: c.color, align: 'center' });
-      s.text(c.body, { x: r3(x + padX), y: r3(cardY + pad + titleH + tgap), w: inner[i], h: bodyH, size: 22, gap: 1, color: C.dark });
-      x += cw + GAP;
+      s.text([c.title], { x: r3(x + padX), y: r3(cardY + pad), w: r3(cw - 2 * padX), h: titleH, size: 24, bold: true, color: c.color, align: 'center' });
+      s.text(c.body, { x: r3(x + bodyPadX), y: r3(cardY + pad + titleH + tgap), w: bodyW, h: bodyH, size: 22, gap: 1, color: C.dark, align: 'center' });
+    });
+    // class I の図の部位ラベル（図の右、class II の図との間。図の外に置き、引き出し線で結ぶ）
+    const labs = [['軟口蓋', anchors.soft], ['口蓋垂', anchors.uvula], ['口蓋弓', anchors.pillar]];
+    const labH = heightFor(1, 22, 0), labPitch = 0.47;
+    const labW = r2(Math.max(...labs.map(([t]) => measure(t, 22))) + 0.01);
+    const labX = r3(anchors.right + GAP);
+    const fig2Left = r3(cxs[1] - figW / 2);
+    if (labX + labW > fig2Left - GAP + 1e-9) throw new Error(`${id}: 部位ラベルと class II の図の間が ${r3(fig2Left - labX - labW)}in`);
+    const labTop = r3(figTop + (figH - (2 * labPitch + labH)) / 2);
+    if (labTop + 2 * labPitch + labH > cardY - GAP + 1e-9) throw new Error(`${id}: 部位ラベルがカードに近すぎます`);
+    labs.forEach(([t, [ax, ay]], k) => {
+      const ly = r3(labTop + k * labPitch);
+      s.text([t], { x: labX, y: ly, w: labW, h: labH, size: 22, color: C.dark, valign: 'middle' });
+      leader(s, labX - 0.05, ly + labH / 2 - 0.02, ax, ay);
     });
     s.text([mark(q(id, '座位・最大開口・舌を出す・発声なし。III・IV で困難を疑う'), ['III・IV で困難を疑う', C.vermilion])],
       { x: X0, y: lineY, w: BW, h: lineH, size: 24, align: 'center' });
-    console.log(`  p${s.page} 模式図 ${figTop}〜${r3(figTop + figH)}in / カード ${cardY}〜${r3(cardY + cardH)}in（内側 ${inner.join(', ')}） / 1行 ${lineY}〜${r3(lineY + lineH)}in`);
+    console.log(`  p${s.page} 模式図 ${figTop}〜${r3(figTop + figH)}in（幅 ${figW}・中心 ${cxs.join(', ')}） / ラベル x ${labX}〜${r3(labX + labW)}（class II の図まで ${r3(fig2Left - labX - labW)}in）` +
+      ` / カード ${cardY}〜${r3(cardY + cardH)}in（幅 ${cw}・本文枠 ${bodyW}） / 1行 ${lineY}〜${r3(lineY + lineH)}in`);
   }
 
   // ===== S6 マスク換気困難の予測（2列カード + 強調ボックス） =====
@@ -555,7 +669,8 @@ async function main() {
     const s = deck.slide({ title: 'マスク換気困難の予測', chapter: 2, notes: notesOf(id), sources: sourcesFor(id, merged) });
     // 語呂合わせ OBESE の頭文字を青の太字に（文言はそのまま）
     const ini = str => [{ text: str[0], color: C.blue, bold: true }, str.slice(1)];
-    const obese = brk(id, 'Obese：BMI 26 超（Kheterpal は 30 以上）', '（Kheterpal');
+    // 「Obese：BMI 26 超（Kheterpal は 30 以上）」は 1 行に入れる（左カードを広げる。右カードは見出しの幅が下限）。
+    // 5 項目とも 1 行になり、左右のカードの項目の間隔がそろう。
     q(id, 'Langeron の 5 因子（OBESE）'); q(id, '『換気不能』の予測因子');
     const eh = emphH(1);
     const ey = r3(BOT - eh);
@@ -563,7 +678,7 @@ async function main() {
       {
         title: 'Langeron の 5 因子（OBESE）', titleColor: C.blue,
         items: [
-          [ini(obese[0]), obese[1]],
+          [ini(q(id, 'Obese：BMI 26 超（Kheterpal は 30 以上）'))],
           [ini(q(id, 'Bearded：ひげ'))],
           [ini(q(id, 'Elderly：55 歳超（同 57 歳以上）'))],
           [ini(q(id, 'Snorer：いびき'))],
@@ -592,7 +707,7 @@ async function main() {
       mark(q(id, '挿管困難は定義により約 2〜10%。9 割以上は予測されずに起きる'), ['9 割以上は予測されずに起きる', C.vermilion]),
       mark(q(id, '所見 1 つの感度は低い（Mallampati 約 5 割、TMD 約 2 割）'), ['感度は低い', C.blue]),
       mark(q(id, '特異度は高く、『異常あり』なら困難の確率が上がる'), ['特異度は高く', C.blue]),
-      mark(q(id, '異常なし＝安全、ではない。全例で次の手を用意'), ['異常なし＝安全、ではない', C.red]),
+      mark(q(id, '異常なし＝安全、ではない。全例で次の手を用意'), ['異常なし＝安全、ではない', C.vermilion]),
       q(id, '評価の価値は『見つけたときに備えられる』こと'),
     ], { ...BUL, yc: r2((TOP + BOT) / 2), size: 24, gap: 0.4 });
   }
@@ -636,8 +751,8 @@ async function main() {
       mark(q(id, '気道評価は『備える』ため。全例で同じ手順で'), ['『備える』', C.vermilion]),
       q(id, '前回の記録は強い予測因子。問診でいびき・歯・頸部'),
       q(id, '開口、Mallampati III・IV、TMD 6 cm、上唇咬合、頸部'),
-      mark(q(id, 'マスク換気困難：OBESE、放射線、OSA。重なると危険'), ['重なると危険', C.red]),
-      mark(q(id, '異常なし≠安全。見つけたら道具・人・覚醒下・転院'), ['異常なし≠安全', C.red]),
+      mark(q(id, 'マスク換気困難：OBESE、放射線、OSA。重なると危険'), ['重なると危険', C.vermilion]),
+      mark(q(id, '異常なし≠安全。見つけたら道具・人・覚醒下・転院'), ['異常なし≠安全', C.vermilion]),
     ], { ...BUL, yc: r2((TOP + BOT) / 2), size: 26, gap: 0.36 });
   }
 

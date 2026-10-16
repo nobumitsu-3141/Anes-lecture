@@ -171,10 +171,16 @@ function emphBox(s, o) {
 
 /**
  * カード: 角丸の塗り箱 + 見出し + 項目（各項目は行配列、項目間に itemGap）。文字はすべて箱の内側。
- * c: {x,y,w,h, title:[行], titleColor, titleSize, items:[[行,...],...], pad, titleGap, itemGap}
+ * c: {x,y,w,h, title:[行], titleColor, titleSize, items:[[行,...],...], pad, titleGap, itemGap,
+ *     itemGaps?: 項目ごとの間隔（items.length-1 個。指定すると itemGap より優先）}
  */
+function gapAfter(c, i) {
+  if (i >= c.items.length - 1) return 0;
+  return c.itemGaps ? c.itemGaps[i] : c.itemGap;
+}
 function itemCard(s, c) {
   const pad = c.pad, ts = c.titleSize, bs = 22;
+  if (c.itemGaps && c.itemGaps.length !== c.items.length - 1) throw new Error(`p${s.page} カード「${runText(c.title[0])}」: itemGaps の数が項目数 - 1 と違います`);
   s.box({ x: r3(c.x), y: r3(c.y), w: r3(c.w), h: r3(c.h), fill: C.bg, radius: 0.08 });
   const iw = r3(c.w - 2 * pad), tx = r3(c.x + pad);
   const th = heightFor(c.title.length, ts, 0);
@@ -183,7 +189,7 @@ function itemCard(s, c) {
   c.items.forEach((lines, i) => {
     const h = heightFor(lines.length, bs, 0);
     s.text(lines, { x: tx, y: r3(y), w: iw, h, size: bs });
-    y += h + (i < c.items.length - 1 ? c.itemGap : 0);
+    y += h + gapAfter(c, i);
   });
   if (y > c.y + c.h - pad + 1e-6) throw new Error(`p${s.page} カード「${runText(c.title[0])}」: 高さ不足（本文の下端 ${r3(y)}in > ${r3(c.y + c.h - pad)}in）`);
   return y;
@@ -191,8 +197,22 @@ function itemCard(s, c) {
 /** カードに必要な高さ */
 function cardNeedH(c) {
   const th = heightFor(c.title.length, c.titleSize, 0);
-  const body = c.items.reduce((a, l) => a + heightFor(l.length, 22, 0), 0) + c.itemGap * (c.items.length - 1);
+  const body = c.items.reduce((a, l, i) => a + heightFor(l.length, 22, 0) + gapAfter(c, i), 0);
   return 2 * c.pad + th + c.titleGap + body;
+}
+/**
+ * 列幅をなるべく等しく配る（水位合わせ）。minW: 各列の最小幅、total: 列幅の合計。
+ * 等分で最小幅に届かない列だけ最小幅にし、残りを等分する。
+ */
+function balancedWidths(minW, total) {
+  const fixed = new Set();
+  for (;;) {
+    const rest = total - [...fixed].reduce((a, i) => a + minW[i], 0);
+    const eq = rest / (minW.length - fixed.size);
+    let changed = false;
+    minW.forEach((m, i) => { if (!fixed.has(i) && m > eq + 1e-9) { fixed.add(i); changed = true; } });
+    if (!changed) return minW.map((m, i) => (fixed.has(i) ? m : eq));
+  }
 }
 
 async function main() {
@@ -264,8 +284,9 @@ async function main() {
     cards.forEach((c, i) => itemCard(s, { ...c, x: X0 + i * (cw + GAP), y: cy, w: cw, h: ch }));
     const boxH = 0.6, by = cy + ch + GAP;
     if (by + boxH > BOTTOM_2SRC) throw new Error(`${id}: 強調ボックスの下端 ${r3(by + boxH)}in が出典に掛かります`);
+    // 強調語はデッキ共通のバーミリオン（赤×黒の色だけの対比を避ける）
     emphBox(s, { y: by, h: boxH, size: 24,
-      lines: [mark(q(id, '黙って停止するのも、確認せず適用するのも誤り。術前に話し合う'), ['誤り', C.red])] });
+      lines: [mark(q(id, '黙って停止するのも、確認せず適用するのも誤り。術前に話し合う'), ['誤り', C.vermilion])] });
     console.log(`  p${s.page} カード h=${ch}、強調ボックス y=${r3(by)}〜${r3(by + boxH)}`);
   }
 
@@ -275,7 +296,8 @@ async function main() {
     // 出典: ASA の文献名（（2023 再承認）まで）が 16pt・1 行に入らないため、文献名の途中の空白（Patients / with）で 2 行に分ける
     const src = sourcesBreak(id, 'with DNR Orders');
     const s = deck.slide({ title: 'ASA の 3 つの選択肢', chapter: 1, notes: notesOf(id), sources: src });
-    const common = { pad: 0.1, titleSize: 24, titleGap: 0.1, itemGap: 0.24, titleColor: C.blue };
+    // 見出しは 22pt 太字（S6 と同じ）。24pt では C の見出しが 4.3in 要り、3 列の幅をそろえられないため
+    const common = { pad: 0.1, titleSize: 22, titleGap: 0.1, itemGap: 0.24, titleColor: C.blue };
     const cards = [
       {
         ...common, title: [q(id, 'A：全面的に蘇生する')],
@@ -300,24 +322,25 @@ async function main() {
         ],
       },
     ];
-    // 幅: 各カードの最長行（推定幅）に比例して配る
+    // 幅: なるべく等幅に（最長の見出しをもつ C だけ必要な幅にし、A・B は残りを等分）
     const { measure } = require('../_lib/decklib');
     const need = cards.map(c => Math.max(...c.title.map(t => measure(runText(t), c.titleSize)),
       ...c.items.flat().map(l => measure(runText(l), 22))));
-    const availInner = BW - 2 * GAP - cards.reduce((a, c) => a + 2 * c.pad, 0);
-    const slack = availInner - need.reduce((a, b) => a + b, 0);
-    if (slack < 0) throw new Error(`${id}: カード幅が ${r3(-slack)}in 足りません`);
-    const ch = Math.ceil(Math.max(...cards.map(cardNeedH)) * 100) / 100 + 0.1;
+    const minW = cards.map((c, i) => Math.ceil((need[i] + 2 * c.pad) * 1000) / 1000);
+    if (minW.reduce((a, b) => a + b, 0) > BW - 2 * GAP + 1e-9) throw new Error(`${id}: カード幅が足りません`);
+    const ws = balancedWidths(minW, BW - 2 * GAP).map(w => Math.floor(w * 1000) / 1000);
+    // 高さ: 最も行の多いカード（B）の最終行の下に、余白（pad 0.1 + 0.14 = 0.24in）を残す
+    const ch = Math.ceil(Math.max(...cards.map(cardNeedH)) * 100) / 100 + 0.14;
     let x = X0;
     cards.forEach((c, i) => {
-      const w = Math.floor((need[i] + slack / 3 + 2 * c.pad) * 1000) / 1000;
-      itemCard(s, { ...c, x, y: Y0, w, h: ch });
-      x += w + GAP;
+      itemCard(s, { ...c, x, y: Y0, w: ws[i], h: ch });
+      x += ws[i] + GAP;
     });
     const ly = r3(Y0 + ch + 0.36);
+    if (ly + heightFor(1, 26, 0) > BOTTOM_2SRC) throw new Error(`${id}: 下の 1 行が出典に掛かります`);
     s.text([mark(q(id, 'どれを選んでも『いつ元に戻すか』を一緒に決める（→ S5）'), ['『いつ元に戻すか』', C.vermilion])],
       { x: X0, y: ly, w: BW, size: 26, bold: true });
-    console.log(`  p${s.page} カード幅 ${cards.map((c, i) => r3(need[i] + slack / 3 + 2 * c.pad)).join(' / ')}、h=${ch}、下の1行 y=${ly}`);
+    console.log(`  p${s.page} カード幅 ${ws.map(r3).join(' / ')}、h=${r3(ch)}、下の1行 y=${ly}`);
   }
 
   // ===== S5 術後、いつ元に戻すか（箇条書き4行 + 強調ボックス） =====
@@ -348,7 +371,8 @@ async function main() {
     const common = { pad: 0.1, titleSize: 22, titleGap: 0.08 };
     const cards = [
       {
-        ...common, title: [q(id, '日本集中治療医学会の勧告（2016）')], titleColor: C.blue, itemGap: 0.08,
+        // 2 行の項目のあとは間隔を詰め、1 行の項目どうし（3→4）は広げて、見た目の間隔をそろえる
+        ...common, title: [q(id, '日本集中治療医学会の勧告（2016）')], titleColor: C.blue, itemGaps: [0.06, 0.06, 0.12],
         items: [
           markLines(brk(id, '心停止時にのみ有効。ほかの治療は別に議論', 'ほかの'), { 0: [['心停止時にのみ有効', C.blue]] }),
           brk(id, '妥当性は繰り返し話し合って評価する', '話し合って'),
@@ -371,20 +395,23 @@ async function main() {
     const availInner = BW - GAP - cards.reduce((a, c) => a + 2 * c.pad, 0);
     const slack = availInner - need.reduce((a, b) => a + b, 0);
     if (slack < 0) throw new Error(`${id}: カード幅が ${r3(-slack)}in 足りません`);
-    const ch = Math.ceil(Math.max(...cards.map(cardNeedH)) * 100) / 100;
-    // 項目の少ないカードは、余った高さを項目間に配る
+    // カードは y1.82（S3 と同じ。金下線の下端から 0.24in）から。左カードの最終行の下に 0.05in の余裕を足す
+    const cy = 1.82, boxH = 0.6;
+    const ch = r3(Math.ceil(Math.max(...cards.map(cardNeedH)) * 100) / 100 + 0.05);
+    // 項目の少ないカード（間隔を個別に決めていないもの）は、余った高さを項目間に配る
     const cards2 = cards.map(c => {
+      if (c.itemGaps) return c;
       const free = ch - cardNeedH(c);
       return free > 0 && c.items.length > 1 ? { ...c, itemGap: c.itemGap + Math.floor(free / (c.items.length - 1) * 100) / 100 } : c;
     });
     let x = X0;
     cards2.forEach((c, i) => {
       const w = Math.floor((need[i] + slack / 2 + 2 * c.pad) * 1000) / 1000;
-      itemCard(s, { ...c, x, y: Y0, w, h: ch });
+      itemCard(s, { ...c, x, y: cy, w, h: ch });
       x += w + GAP;
     });
-    const boxH = 0.6, by = Y0 + ch + GAP;
-    if (by + boxH > BOTTOM_2SRC) throw new Error(`${id}: 強調ボックスの下端 ${r3(by + boxH)}in が出典に掛かります`);
+    const by = cy + ch + GAP;
+    if (by + boxH > BOTTOM_2SRC + 1e-6) throw new Error(`${id}: 強調ボックスの下端 ${r3(by + boxH)}in が出典に掛かります`);
     emphBox(s, { y: by, h: boxH, size: 24,
       lines: [mark(q(id, '他院・前回入院の DNAR は、経緯と本人の意思を確かめ直す'), ['確かめ直す', C.vermilion])] });
     console.log(`  p${s.page} カード h=${ch}、slack=${r3(slack)}、強調ボックス y=${r3(by)}〜${r3(by + boxH)}`);
@@ -422,12 +449,15 @@ async function main() {
       mark(q(id, 'PACU 退室後は元の DNAR に戻す。術後の合併症の治療は通常どおり行う'), ['PACU 退室後', C.blue]),
       mark(q(id, '説明者：麻酔科 ◯◯、同席：本人、長女、病棟看護師 ◯◯'), ['説明者：', C.blue], ['同席：', C.blue]),
     ];
+    // 記録例は枠の中で上下中央（描画系によって行の高さが違っても、上下の余白がそろう）
     const th = heightFor(4, size, gap);
-    const by = 1.95, bh = r3(th + 2 * pad + 0.1);
+    const vpad = 0.2;
+    const by = 1.95, bh = r3(th + 2 * vpad);
     s.box({ x: X0, y: by, w: BW, h: bh, fill: C.bg, radius: 0.08, line: { color: C.border, width: 1.5 } });
-    s.text(rec, { x: X0 + pad, y: r3(by + pad + 0.05), w: r3(BW - 2 * pad), h: th, size, gap });
+    s.text(rec, { x: X0 + pad, y: r3(by + vpad), w: r3(BW - 2 * pad), h: th, size, gap, valign: 'middle' });
     const ly = r3(by + bh + 0.42);
-    s.text([mark(q(id, '『急変時 DNAR』『様子を見る』のようなあいまいな記録はしない'), ['あいまいな記録はしない', C.red])],
+    // 強調語はデッキ共通のバーミリオン（赤×黒の色だけの対比を避ける）
+    s.text([mark(q(id, '『急変時 DNAR』『様子を見る』のようなあいまいな記録はしない'), ['あいまいな記録はしない', C.vermilion])],
       { x: X0, y: ly, w: BW, size: 26, bold: true });
     console.log(`  p${s.page} 記録ボックス y=${by}〜${r3(by + bh)}、下の1行 y=${ly}`);
   }

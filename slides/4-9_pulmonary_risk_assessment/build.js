@@ -333,10 +333,26 @@ function itemTable(s, items, o) {
  * table: true なら本文を itemTable（行送り固定 1.2 em）、false なら itemText（テキスト枠、行間 ls 倍）で組む。
  */
 const CARD = { padX: 0.14, padY: 0.1, titleH: 0.45, titleGap: 0.04, titleSize: 24, size: 22, radius: 0.08 };
+// 見出しと 1 つ目の項目の間を項目どうしの間より詰まって見せないための見出し下の間隔（S2・S5。既定 0.04 + 0.09）。
+// S7 は強調ボックス（24pt・2 行・1.0in）に高さを回すため既定のまま（右カード 7 行に余地がない）。
+const HEAD_GAP = 0.13;
 const bodyH = o => (o.table ? itemTableH(o.items, { size: CARD.size, gap: o.gap }) : itemTextH(o.items, { size: CARD.size, ls: o.ls, gap: o.gap }));
+const titleGapOf = o => (o.titleGap != null ? o.titleGap : CARD.titleGap);
 function listCardNeed(o) {
   const padY = o.padY != null ? o.padY : CARD.padY;
-  return 2 * padY + CARD.titleH + CARD.titleGap + bodyH(o);
+  return 2 * padY + CARD.titleH + titleGapOf(o) + bodyH(o);
+}
+/**
+ * カードの高さ h に収まる項目間の間隔（pt、0.1pt 刻み。丸めの安全分 0.1pt を引いて切り下げ）。table: true のカード用。
+ * max を超えない（max 省略時は上限なし）。
+ */
+function fitCardGap(o, h, max = Infinity) {
+  const padY = o.padY != null ? o.padY : CARD.padY;
+  const its = normItems(o.items);
+  const n = its.reduce((a, it) => a + it.lines.length, 0);
+  const rest = h - 2 * padY - CARD.titleH - titleGapOf(o) - n * CARD.size * 1.2 / 72;
+  const g = Math.floor((rest / (its.length - 1)) * 72 * 10 - 1) / 10;
+  return Math.min(max, g);
 }
 function listCard(s, o) {
   const padY = o.padY != null ? o.padY : CARD.padY;
@@ -344,7 +360,7 @@ function listCard(s, o) {
   s.box({ x: r3(o.x), y: r3(o.y), w: r3(o.w), h: r3(o.h), fill: C.bg, radius: CARD.radius });
   const ix = r3(o.x + CARD.padX), iw = r3(o.w - 2 * CARD.padX);
   s.text(o.title, { x: ix, y: r3(o.y + padY), w: iw, h: CARD.titleH, size: CARD.titleSize, bold: true, color: o.titleColor || C.dark });
-  const by = r3(o.y + padY + CARD.titleH + CARD.titleGap);
+  const by = r3(o.y + padY + CARD.titleH + titleGapOf(o));
   const bh = r3(o.y + o.h - padY - by);
   if (o.table) return itemTable(s, o.items, { x: ix, y: by, w: iw, h: bh, size: CARD.size, gap: o.gap });
   return itemText(s, o.items, { x: ix, y: by, w: iw, h: bh, size: CARD.size, ls: o.ls, gap: o.gap });
@@ -451,11 +467,11 @@ async function main() {
     const s = deck.slide({ title: '術後肺合併症のリスク', chapter: 0, notes: notesOf(id), sources: sourcesFor(id) });
     const cw = r3((BW - 0.25) / 2);
     const L = {
-      title: q(id, '患者因子'), titleColor: C.blue, table: true, gap: 14, padY: 0.12,
+      title: q(id, '患者因子'), titleColor: C.blue, table: true, gap: 14, padY: 0.12, titleGap: HEAD_GAP,
       items: ['高齢（60 歳超で上がる）', 'ASA-PS 2 以上、介助が必要', 'COPD、うっ血性心不全', '1 か月以内の呼吸器感染', 'アルブミン 3.0 g/dL 未満、貧血'].map(t => q(id, t)),
     };
     const R = {
-      title: q(id, '手術・麻酔因子'), titleColor: C.vermilion, table: true, gap: 14, padY: 0.12,
+      title: q(id, '手術・麻酔因子'), titleColor: C.vermilion, table: true, gap: 14, padY: 0.12, titleGap: HEAD_GAP,
       items: ['上腹部・胸腔内の切開', '長時間手術（2 時間超から）', '緊急手術', '全身麻酔（区域麻酔より）', '残存筋弛緩（長時間作用型の薬）'].map(t => q(id, t)),
     };
     const ch = r2(Math.max(listCardNeed(L), listCardNeed(R)) + 0.01);
@@ -485,8 +501,9 @@ async function main() {
       [q(id, '緊急手術'), q(id, 'あり'), ctr('8')],
     ];
     // 列幅: spec の目安 3.6 / 6.0 / 2.6 では「術前 SpO2（室内気・仰臥位）」「1 か月以内の呼吸器感染」が 2 行になり
-    // 表＋下の 1 行が本文ゾーンに入らないため、1 列目を広げて全行 1 行にする（合計 12.2in）
-    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [4.85, 4.75, 2.6] });
+    // 表＋下の 1 行が本文ゾーンに入らないため、1 列目を広げて全行 1 行にする（合計 12.2in。1 列目は 4.8in 以上が要る）。
+    // セルの上下余白は 4pt（行高 0.48in）。22pt 1 行に上下の余裕を持たせ、下の 1 行との間 0.30in を保つ。
+    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [4.85, 4.75, 2.6], margin: [4, 6, 4, 6] });
     const line = mark(q(id, 'PPC：低 26 点未満 1.6%、中 26〜44 点 13.3%、高 45 点以上 42.1%'),
       ['1.6%', C.blue], ['13.3%', C.vermilion], ['42.1%', C.red]);
     const lh = heightFor(1, 22, 0);
@@ -525,7 +542,7 @@ async function main() {
     const s = deck.slide({ title: 'COPD と喘息', chapter: 2, notes: notesOf(id), sources: sourcesFor(id) });
     // 喘息のカードは 2〜3 行に割れる項目が多く 10 行になる。行送り固定 1.2 em（itemTable）で本文ゾーンに収める
     const L = {
-      title: q(id, 'COPD'), titleColor: C.blue, table: true, gap: 12,
+      title: q(id, 'COPD'), titleColor: C.blue, table: true, padY: 0.08, titleGap: HEAD_GAP,
       items: [
         { lines: brk(id, '吸入薬は当日も続ける（持参させる）', '（持参') },
         q(id, '増悪中は延期。症状が元に戻るまで'),
@@ -536,7 +553,7 @@ async function main() {
     };
     const nsaids = brk(id, 'NSAIDs 過敏喘息：NSAIDs とコハク酸エステル型ステロイドの急速静注を避ける', 'NSAIDs と', 'ステロイドの');
     const R = {
-      title: q(id, '喘息'), titleColor: C.vermilion, table: true, gap: 4,
+      title: q(id, '喘息'), titleColor: C.vermilion, table: true, padY: 0.08, titleGap: HEAD_GAP,
       items: [
         { lines: brk(id, 'コントロール良好な時期に手術。ICS は続ける', 'ICS') },
         q(id, '不良なら延期して呼吸器内科へ'),
@@ -546,10 +563,13 @@ async function main() {
       ],
     };
     const ch = r2(BOT - TOP);
+    // 項目の間隔: 喘息（10 行）はカードに入る最大、COPD（7 行）も同じ間隔にそろえる（左右の段落間隔を統一）
+    R.gap = fitCardGap(R, ch);
+    L.gap = R.gap;
     const wL = 6.04, wR = r3(BW - 0.25 - wL);
     listCard(s, { ...L, x: X0, y: TOP, w: wL, h: ch });
     listCard(s, { ...R, x: r3(XR - wR), y: TOP, w: wR, h: ch });
-    console.log(`  ${id}: カード h ${ch}（必要 COPD ${r3(listCardNeed(L))} / 喘息 ${r3(listCardNeed(R))}）`);
+    console.log(`  ${id}: カード h ${ch}（必要 COPD ${r3(listCardNeed(L))} / 喘息 ${r3(listCardNeed(R))}、間隔 ${R.gap}pt）`);
   }
 
   // ===== S6 OSA と STOP-Bang（左: 8 項目、右: 箇条書き 4 項目） =====
@@ -595,7 +615,7 @@ async function main() {
     const id = 'S7';
     const s = deck.slide({ title: '小児の上気道炎', chapter: 3, notes: notesOf(id), sources: sourcesFor(id) });
     const L = {
-      title: q(id, '延期を考える'), titleColor: C.vermilion, table: true, gap: 8, padY: 0.08,
+      title: q(id, '延期を考える'), titleColor: C.vermilion, table: true, gap: 8, padY: 0.06,
       items: [
         q(id, '38℃ 超の発熱、ぐったりしている'),
         q(id, '膿性鼻汁、湿性咳嗽'),
@@ -605,7 +625,7 @@ async function main() {
       ],
     };
     const R = {
-      title: q(id, '進める・工夫する'), titleColor: C.blue, table: true, gap: 4.5, padY: 0.08,
+      title: q(id, '進める・工夫する'), titleColor: C.blue, table: true, padY: 0.06,
       items: [
         q(id, '透明な鼻汁だけなら多くは可'),
         { lines: brk(id, '上気道炎から 2〜4 週たてばリスクは下がる', 'リスク') },
@@ -617,16 +637,18 @@ async function main() {
     const E = {
       lines: brk(id, '喉頭痙攣・気管支攣縮・低酸素に備える。迷えば延期し、保護者と主治医に共有', '迷えば')
         .map((l, i) => (i === 1 ? mark(l, ['迷えば延期し', C.red]) : l)),
-      size: 22, table: true, margin: 0.07,
+      size: 24, table: true, margin: 0.1,
     };
-    const eh = r2(emphNeed(E) + 0.02);
+    // 強調ボックスは 24pt・2 行・高さ 1.0in（上下の余白 0.1in）。そのぶんカードを詰め、右カードの項目間隔を入る最大にする
+    const eh = r2(emphNeed(E));
     const ey = r2(BOT - eh);
     const ch = r2(ey - GAP - TOP);
+    R.gap = fitCardGap(R, ch, 4.5);
     const wL = 5.93, wR = r3(BW - 0.25 - wL);
     listCard(s, { ...L, x: X0, y: TOP, w: wL, h: ch });
     listCard(s, { ...R, x: r3(XR - wR), y: TOP, w: wR, h: ch });
     emphBox(s, { ...E, x: X0, y: ey, w: BW, h: eh });
-    console.log(`  ${id}: カード h ${ch}（必要 ${r3(listCardNeed(L))} / ${r3(listCardNeed(R))}）、強調 ${ey}〜${r2(ey + eh)}`);
+    console.log(`  ${id}: カード h ${ch}（必要 ${r3(listCardNeed(L))} / ${r3(listCardNeed(R))}、右の間隔 ${R.gap}pt）、強調 ${ey}〜${r2(ey + eh)}`);
   }
 
   // ===== S8 肺機能検査と相談先（表 3 列 × 5 行＋見出し行） =====
@@ -636,17 +658,22 @@ async function main() {
     const cell = (str, ...breaks) => brk(id, str, ...breaks).join('\n');
     const rows = [
       [q(id, '状況'), q(id, 'どうする'), q(id, '相談先')],
-      [q(id, '心臓・胸部以外の手術'), cell('肺機能検査・胸部 X 線の値だけで可否を決めない（ACP）', '可否'),
-        cell('原因不明の呼吸困難なら呼吸器内科', '呼吸困難', '呼吸器内科')],
+      [q(id, '心臓・胸部以外の手術'), cell('肺機能検査・胸部 X 線の値だけで可否を決めない（ACP）', '値だけで'),
+        cell('原因不明の呼吸困難なら呼吸器内科', 'なら')],
       [q(id, '肺切除'), cell('FEV1・DLCO の予測術後値が 60% 超なら低リスク', '60%'), cell('呼吸器外科・呼吸器内科', '呼吸器内科')],
       [cell('コントロール不良の喘息、COPD 増悪', '喘息'), cell('延期して治療。症状が元に戻るまで', '症状'), q(id, '呼吸器内科')],
       [cell('OSA に低換気・重症肺高血圧・安静時低酸素', '重症', '安静時'), q(id, '術前に追加評価（必要なら延期）'),
         cell('呼吸器・睡眠の専門医', '専門医')],
       [q(id, '成人の呼吸器感染後'), q(id, '約 6 週の延期を勧める総説がある'), q(id, '主科と相談')],
     ];
-    // 列幅は spec の目安 3.8 / 5.2 / 3.2 を、12 行（見出し 1 ＋本文 11）で収まる配分に見直した（合計 12.2in）。
-    // 行送り 1.2 em の 12 行（4.4in）を本文ゾーン（1.85〜6.47in）に入れるため、セルの上下余白を 1pt にする。
-    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [3.59, 5.36, 3.25], margin: [1, 6, 1, 6] });
+    // 列幅は spec の目安 3.8 / 5.2 / 3.2 を見直した（合計 12.23in = 本文ゾーンの幅）。
+    //  - どうする 5.38: 最終行「約 6 週の延期を勧める総説がある」を 1 行に入れるには 5.36in 以上が要る（5.2 では 2 行になり表が入らない）。
+    //  - 相談先 3.25: 「原因不明の呼吸困難」が 1 行に入り、1 行目の相談先が 2 行で済む（3.2 では 3 行）。
+    //  - 状況 3.6: 「心臓・胸部以外の手術」「成人の呼吸器感染後」が 1 行に入る。
+    //  「OSA に低換気・重症肺高血圧・安静時低酸素」は 2 行にするには状況の列が 4.6in 要り、他の列が 2〜3 行に増えるので 3 行のまま。
+    //  1 行目の「どうする」は「値だけで」の前で改行し、1 行目・2 行目とも列の右端に余裕を残す。
+    // 本文 11 行（見出し 1 ＋ 2+2+2+3+1）を行送り 1.2 em、セルの上下余白 3pt（行高 1 行 0.45 / 2 行 0.82 / 3 行 1.19in）で組む。
+    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [3.6, 5.38, 3.25], margin: [3, 6, 3, 6] });
     assertBottom(id, '表', t.y + t.h);
     console.log(`  ${id}: 表 ${t.y}〜${r2(t.y + t.h)}（行高 ${t.rowH.join(', ')}）`);
   }
@@ -662,7 +689,8 @@ async function main() {
       mark(q(id, 'STOP-Bang 3 点以上で OSA を疑う。CPAP 持参、挿管に備える'), ['3 点以上', C.blue]),
       mark(q(id, '小児の上気道炎：発熱・膿性鼻汁・湿性咳嗽なら延期を考える'), ['延期を考える', C.vermilion]),
     ];
-    const size = 24, gap = 24;
+    // 1 項目目（「…ARISCAT で評価」）の右端に余裕を持たせるため 23pt（24pt では行頭記号を引いた幅の残りが約 0.36in）
+    const size = 23, gap = 24;
     const hh = heightFor(items.length, size, gap);
     if (hh > BOT - TOP + 1e-6) throw new Error(`${id} 箇条書きの高さ ${hh} > ${r2(BOT - TOP)}`);
     s.bullets(items, { y: TOP, h: r2(BOT - 0.02 - TOP), size, gap, valign: 'middle' });

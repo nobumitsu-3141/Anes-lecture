@@ -124,8 +124,11 @@ const toRuns = l => (Array.isArray(l) ? l : [l]).map(r => (typeof r === 'string'
 //  0) ライブラリ既定（' / ' の区切りでだけ改行）で 2 行に入ればそのまま渡す。
 //  1) 文言はそのままで、文献の途中の語の切れ目で改行する（区切り > 著者「et al.」の後 > 誌名と年の間 > その他の空白）。
 //  2) 入らなければ区切りの前後の空白を詰める（' / ' → '/'）。
-//  3) それでも入らなければ（）内の補足を後ろの文献から外す。
+//  3) それでも入らなければ（）内の補足を後ろの文献から外す。外した段階ごとに、まず区切り ' / ' のままで試し、
+//     入らないときだけ空白を詰める（補足を外して入るようになったら、空白は詰めない）。
 //  4) それでも入らないときだけ、JCS 2022 の長い表題を最小限短くする（文献は落とさない。DEVIATIONS に記録）。
+//  S5・S6・S8・S9 は、どの 2 文献を 1 行に並べても 16pt で 1 行（46.6 字）を超えるため、
+//  文献の区切りだけでは 2 行に入らない（3 行になりライブラリが Error）。文献の途中での改行は避けられない。
 // ---------------------------------------------------------------------------
 const SRC = LAYOUT.source;
 const DEVIATIONS = [];
@@ -169,40 +172,48 @@ function split2(items, sep) {
   }
   if (!cands.length) return null;
   cands.sort((x, y) => x.rank - y.rank || y.a.length - x.a.length);
-  return [cands[0].a, cands[0].b];
+  return { lines: [cands[0].a, cands[0].b], rank: cands[0].rank };
 }
 function sourcesFor(id) {
   const spec = SPEC[id] && SPEC[id].sources;
   if (!spec) return undefined;
   const items = spec.split(' / ');
   if (libLines(items).length <= 2) return items;
-  let r = split2(items, ' / ');
-  if (r) { NOTES_LOG.push(`${id} 出典: 文献の途中（「${r[0].slice(-14)}」の後）で改行（文言はそのまま）`); return r; }
-  r = split2(items, '/');
-  if (r) { DEVIATIONS.push(`${id} 出典: 区切りの前後の空白を詰めた（' / ' → '/'）`); return r; }
-  const cut = items.slice();
-  const removed = [];
-  for (let k = cut.length - 1; k >= 0; k--) {
-    const m = cut[k].match(/（[^）]*）$/);
+  // （）内の補足を後ろの文献から 1 つずつ外した段階（stages[n] = n 個外した状態。stages[0] は外さない）
+  const stages = [{ cut: items.slice(), removed: [] }];
+  for (let k = items.length - 1; k >= 0; k--) {
+    const prev = stages[stages.length - 1];
+    const m = prev.cut[k].match(/（[^）]*）$/);
     if (!m) continue;
-    removed.push(m[0]);
-    cut[k] = cut[k].slice(0, -m[0].length);
-    r = split2(cut, '/');
-    if (r) {
-      DEVIATIONS.push(`${id} 出典: 区切りの前後の空白を詰め（' / ' → '/'）、（）内の補足 ${removed.join('・')} を外した`);
-      return r;
-    }
+    const c = prev.cut.slice();
+    c[k] = c[k].slice(0, -m[0].length);
+    stages.push({ cut: c, removed: [...prev.removed, m[0]] });
   }
-  const k = cut.indexOf(JCS_FULL);
-  if (k >= 0) {
-    for (const short of JCS_SHORT) {
-      const c2 = cut.slice();
-      c2[k] = short;
-      r = split2(c2, '/');
-      if (r) {
-        DEVIATIONS.push(`${id} 出典: 区切りの前後の空白を詰め（' / ' → '/'）、（）内の補足 ${removed.join('・')} を外し、` +
-          `「${JCS_FULL}」→「${short}」（それでも 16pt 2 行に入らないため。文献は落としていない）`);
-        return r;
+  // 表題は原文 → 短縮 1 → 短縮 2 の順。それぞれで（）を外す数の少ない順、区切りは ' / ' → '/' の順に試す
+  for (const short of [null, ...JCS_SHORT]) {
+    for (const st of stages) {
+      let cut = st.cut;
+      if (short) {
+        const k = cut.indexOf(JCS_FULL);
+        if (k < 0) continue;
+        cut = cut.slice();
+        cut[k] = short;
+      }
+      for (const sep of [' / ', '/']) {
+        const r = split2(cut, sep);
+        if (!r) continue;
+        const how = r.rank === 0 ? '文献の区切りで改行' : `文献の途中（「${r.lines[0].slice(-16)}」の後）で改行`;
+        const parts = [];
+        if (sep === '/') parts.push(`区切りの前後の空白を詰めた（' / ' → '/'）`);
+        if (st.removed.length) parts.push(`（）内の補足 ${st.removed.join('・')} を外した`);
+        if (short) parts.push(`表題を短縮「${JCS_FULL}」→「${short}」`);
+        if (parts.length) {
+          const keep = sep === ' / ' ? `区切りは ' / ' のまま。` : '';
+          DEVIATIONS.push(`${id} 出典: ${parts.join('。')}（16pt 2 行に入らないため。文献は落としていない。${keep}${how}）`);
+        } else {
+          NOTES_LOG.push(`${id} 出典: ${how}（文言はそのまま）`);
+        }
+        return r.lines;
       }
     }
   }
@@ -216,8 +227,14 @@ const X0 = LAYOUT.body.x;        // 0.55
 const XR = LAYOUT.body.right;    // 12.78
 const BW = XR - X0;              // 12.23
 const TOP = 1.85;                // 本文の上端
+const TOP_T = 1.82;              // 表の上端（金下線 8pt の下端 1.576in から 0.24in 以上。4-10・4-12 と同じ）
 const BOT = 6.46;                // 出典 2 行（枠 y6.5）のときの本文下端（全スライド出典 2 行）
+const ZONE_BOT = 6.47;           // 表の下端の上限（出典 2 行の枠 y6.5 の 0.03in 上。4-10 と同じ）
 const GAP = 0.24;                // 要素間の最小間隔（0.6cm）
+// 表のセル余白（pt: 上, 右, 下, 左）。行間を固定値（1.2 em）にすると字面が行の上に寄り、字の下に約 3pt の空きが残る
+// （描画で実測: 上下とも 1pt の余白で、上の罫線まで 2.2pt・下の罫線まで 4.0pt）。上を厚く下を薄くして、
+// 字と罫線の間を上下とも約 3.6pt（0.05in）にそろえる。
+const TM = [2.6, 6, 0.4, 6];
 const CM = 2.54;
 const MEIRYO_EM = 1.5;           // 実機メイリオの 1 行高（em、行間 100%）
 const r2 = v => Math.round(v * 100) / 100;
@@ -319,23 +336,20 @@ function listCard(s, o) {
   return itemText(s, o.items, { x: ix, y: by, w: iw, h: r3(o.y + o.h - padY - by), size: CARD.size, ls: o.ls, gap: o.gap, indent: CARD.indent });
 }
 /**
- * 2 列カード。幅は各カードの最長行に合わせ、余りを等分。高さは高い方に合わせ、
- * 低い方は余った高さを項目の間に配る。戻り値: カードの下端
+ * 2 列カード。幅は各カードの最長行に合わせ、余りを等分。高さは高い方に合わせる。
+ * 項目の間隔（gap）と行間（ls）は左右で同じにし、低い方のカードは下に空きを残す
+ * （余った高さを項目の間に配ると、左右で項目の並びのリズムがそろわないため）。戻り値: カードの下端
  */
 function twoCards(s, id, L, R, y) {
+  if (L.gap !== R.gap || L.ls !== R.ls) throw new Error(`${id}: 2 列カードの gap・ls は左右で同じにしてください`);
   const wl = listCardNeedW(L), wr = listCardNeedW(R);
   const slack = BW - 0.25 - wl - wr;
   if (slack < 0) throw new Error(`${id}: 2 列カードの幅が ${r3(-slack)}in 足りません`);
   const wL = r3(wl + slack / 2), wR = r3(BW - 0.25 - wL);
   const ch = r2(Math.max(listCardNeed(L), listCardNeed(R)) + 0.01);
-  const spread = c => {
-    const n = normItems(c.items).length;
-    const free = ch - listCardNeed(c);
-    return n > 1 && free > 0.01 ? { ...c, gap: c.gap + Math.floor(free / (n - 1) * 72 * 10) / 10 } : c;
-  };
-  listCard(s, { ...spread(L), x: X0, y, w: wL, h: ch });
-  listCard(s, { ...spread(R), x: r3(XR - wR), y, w: wR, h: ch });
-  console.log(`  ${id}: カード幅 ${wL} / ${wR}（余り ${r3(slack)}）、h ${ch}（必要 ${r3(listCardNeed(L))} / ${r3(listCardNeed(R))}）`);
+  listCard(s, { ...L, x: X0, y, w: wL, h: ch });
+  listCard(s, { ...R, x: r3(XR - wR), y, w: wR, h: ch });
+  console.log(`  ${id}: カード幅 ${wL} / ${wR}（余り ${r3(slack)}）、h ${ch}（必要 ${r3(listCardNeed(L))} / ${r3(listCardNeed(R))}）、項目間 ${L.gap}pt・行間 ${L.ls}`);
   return r2(y + ch);
 }
 
@@ -504,13 +518,13 @@ async function main() {
       ],
     };
     const cb = twoCards(s, id, L, R, TOP);
-    // 強調ボックスの文言は 22pt でも 1 行に入らない（推定 12.32in > 12.07in）ため、「＝」の後で 2 行に割る（24pt・行送り 1.2 em）
+    // 強調ボックスの文言は 22pt でも 1 行に入らない（推定 12.32in > 12.07in）ため、「＝」の後で 2 行に割る（24pt・行送り 1.35 em）
     const E = {
       lines: markLines(brk(id, '新しい症状（胸痛、息切れの悪化、失神）＝評価が終わるまで待機手術はしない', '評価が'), { 1: [['待機手術はしない', C.red]] }),
-      size: 24, ls: 0.8,
+      size: 24, ls: 0.9,
     };
     const eh = r2(emphNeed(E) + 0.06);
-    const ey = r2(cb + Math.max(GAP + 0.06, (BOT - cb - eh) / 2));
+    const ey = r2(cb + Math.max(GAP, (BOT - cb - eh) / 2));
     emphBox(s, { ...E, x: X0, y: ey, w: BW, h: eh });
     assertBottom(id, '強調ボックス', ey + eh);
     console.log(`  ${id}: 強調 ${ey}〜${r2(ey + eh)}`);
@@ -600,9 +614,11 @@ async function main() {
         cell('低リスク手術・低リスク患者・機能良好には行わない（3）', '低リスク患者', '機能良好')],
     ];
     // 列幅: spec の目安 2.4 / 5.4 / 4.4 では「JCS は 4 METs 未満・不明で（IIb）」「機能良好には行わない（3）」で
-    // 行数が増え本文ゾーンに入らない。表の高さが最小（12 行ぶん）になる配分 2.25 / 5.48 / 4.47 に見直した（合計 12.2in）。
+    // 行数が増え本文ゾーンに入らない。表の高さが最小（12 行ぶん）になる配分に見直した（合計 12.2in）。
+    // 1 列目は最長の「NT-proBNP」（推定 1.73in）が入る 2.0in まで詰め、2 列目「65 歳以上など（AHA 2a）。JCS は」
+    // （推定 5.30in）に 0.26in の余裕を持たせる（2.25 / 5.48 では余裕 0.01in で、描画で折り返して 4 行になった）。
     // 12 行（行送り 1.2 em）を本文ゾーン（1.85〜6.46in）に入れるため、セルの上下余白を 1pt にする（4-9 の S8 と同じ）。
-    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [2.25, 5.48, 4.47], margin: [1, 6, 1, 6] });
+    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [2.0, 5.73, 4.47], margin: [1, 6, 1, 6] });
     assertBottom(id, '表', t.y + t.h);
     console.log(`  ${id}: 表 ${t.y}〜${r2(t.y + t.h)}（行高 ${t.rowH.join(', ')}）`);
   }
@@ -643,13 +659,13 @@ async function main() {
     const size = 24, gap = 10, by0 = 1.9;
     const bh = heightFor(items.length, size, gap);
     s.bullets(items, { y: by0, h: bh, size, gap });
-    // 強調ボックスの文言は 22pt でも 1 行に入らない（推定 12.32in > 12.07in）ため、「：」の後で 2 行に割る（24pt・行送り 1.2 em）
+    // 強調ボックスの文言は 22pt でも 1 行に入らない（推定 12.32in > 12.07in）ため、「：」の後で 2 行に割る（24pt・行送り 1.5 em。下に余裕があるので行間は詰めない）
     const E = {
       lines: markLines(brk(id, '上がっていたら：可逆的な原因（出血、低血圧、敗血症）を直し、循環器内科へ', '可逆的'), { 1: [['可逆的な原因', C.vermilion]] }),
-      size: 24, ls: 0.8,
+      size: 24, ls: 1,
     };
     const eh = r2(emphNeed(E) + 0.06);
-    const ey = r2(by0 + bh + Math.max(GAP + 0.06, (BOT - by0 - bh - eh) / 2));
+    const ey = r2(by0 + bh + Math.max(GAP, (BOT - by0 - bh - eh) / 2));
     emphBox(s, { ...E, x: X0, y: ey, w: BW, h: eh });
     assertBottom(id, '強調ボックス', ey + eh);
     console.log(`  ${id}: 箇条書き ${by0}〜${r2(by0 + bh)}、強調 ${ey}〜${r2(ey + eh)}`);

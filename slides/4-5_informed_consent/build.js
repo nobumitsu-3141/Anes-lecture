@@ -192,54 +192,82 @@ function tightText(s, lines, o) {
 
 // ---------------------------------------------------------------------------
 // カード（S3・S4・S6）: 角丸の塗り箱＋見出し（24pt 太字）＋項目（22pt）。文字はすべて箱の内側。
-// 幅: 各カードの最長行に左右の余白を足し、余りを等分。高さ: y から bottom まで（左右で揃える）。
+// 幅: 各カードの最長行（折り返し行は字下げぶんを足す）に左右の余白を足し、余りを等分。
+// 高さ: y から bottom まで（左右で揃える）。
 // 項目の間隔: 最も詰まったカードに合わせて余りを配る（上限 maxItemGap）。
+// 項目の区切り: 2 行以上に折れた項目は、2 行目以降を 1 字下げる（ぶら下げ）。項目の頭が左端にそろい、
+//   折り返し行と次の項目を見分けられる。行頭の「・」は 1 字ぶん全行が右に寄り、S6 では 2 列が本文幅を超えるため使わない。
+// item: 行配列 | { lines, hang: false（字下げしない）}。card.sepBefore: [k] … 項目 k の前だけ間隔を広げて区切る
+//   （同じカードの他の間隔は半分に詰め、間隔の合計は他のカードと同じ）。
+// 下余白: 最終行の字面からカード下端まで 0.15in 以上（上の余白＝見出しの字面まで 約 0.15in とそろえる）。
 // ---------------------------------------------------------------------------
-const CARD = { padY: 0.08, titleSize: 24, size: 22, titleGap: 0.04, radius: 0.08, maxPadX: 0.2, minPadX: 0.08 };
+const CARD = {
+  padTop: 0.08, padBot: 0.15, titleSize: 24, size: 22, titleGap: 0.04, radius: 0.08,
+  maxPadX: 0.2, minPadX: 0.08, hang: 22 / 72,   // 字下げ = 22pt の全角 1 字
+};
+const itemLines = it => (Array.isArray(it) ? it : it.lines);
+const itemHang = it => (Array.isArray(it) ? true : it.hang !== false);
 
 function cardRow(s, cards, o) {
   const n = cards.length;
-  const need = cards.map(c => Math.max(measure(c.title, CARD.titleSize), ...c.items.flat().map(l => measure(runText(l), CARD.size))));
+  const lineNeed = it => itemLines(it).map((l, li) => measure(runText(l), CARD.size) + (li > 0 && itemHang(it) ? CARD.hang : 0));
+  const need = cards.map(c => Math.max(measure(c.title, CARD.titleSize), ...c.items.flatMap(lineNeed)));
   const extra = BW - o.gap * (n - 1) - need.reduce((a, b) => a + b, 0);
-  const padX = Math.min(CARD.maxPadX, extra / (2 * n));
+  const padX = Math.floor(Math.min(CARD.maxPadX, extra / (2 * n)) * 1000) / 1000;
   if (padX < CARD.minPadX - 1e-9) throw new Error(`p${s.page}: カードの左右余白が ${r3(padX)}in（${CARD.minPadX}in 未満）`);
   const slack = (extra - 2 * n * padX) / n;   // 余りは各カードに等分（内側の幅が広がる）
   const h = r3(o.bottom - o.y);
-  const fixed = 2 * CARD.padY + tightH(1, CARD.titleSize) + CARD.titleGap;
-  const linesH = c => c.items.reduce((a, it) => a + tightH(it.length, CARD.size), 0);
+  const fixed = CARD.padTop + tightH(1, CARD.titleSize) + CARD.titleGap + CARD.padBot;
+  const linesH = c => c.items.reduce((a, it) => a + tightH(itemLines(it).length, CARD.size), 0);
   let g = Math.min(o.maxItemGap, ...cards.map(c => (h - fixed - linesH(c)) / (c.items.length - 1)));
   g = Math.floor(g * 1000) / 1000;
   if (g < 0.06 - 1e-9) throw new Error(`p${s.page}: 項目の間隔が ${r3(g)}in（0.06in 未満）。高さ不足`);
   let x = X0;
   const info = [];
   cards.forEach((c, i) => {
-    const w = r3(need[i] + 2 * padX + slack);
-    const iw = r3(w - 2 * padX), ix = r3(x + padX);
+    // 内側の幅は 0.001in 単位で切り上げ（丸めで最長行が収まらなくならないように。合計は 0.002in 以内で BW に収まる）
+    const iw = Math.ceil((need[i] + slack) * 1000 - 1e-6) / 1000;
+    const w = r3(iw + 2 * padX), ix = r3(x + padX);
     s.box({ x: r3(x), y: o.y, w, h, fill: C.bg, radius: CARD.radius });
-    let y = o.y + CARD.padY;
+    let y = o.y + CARD.padTop;
     tightText(s, [c.title], { x: ix, y: r3(y), w: iw, size: CARD.titleSize, bold: true, color: c.titleColor });
     y += tightH(1, CARD.titleSize) + CARD.titleGap;
-    c.items.forEach(lines => {
-      tightText(s, lines, { x: ix, y: r3(y), w: iw, size: CARD.size });
-      y += tightH(lines.length, CARD.size) + g;
+    // 項目の間隔（sepBefore の項目の前だけ広げる。合計は (項目数-1) × g のまま）
+    const nG = c.items.length - 1, sep = new Set(c.sepBefore || []);
+    const small = sep.size ? Math.floor(g * 0.5 * 1000) / 1000 : g;
+    const big = sep.size ? Math.floor((nG * g - (nG - sep.size) * small) / sep.size * 1000) / 1000 : g;
+    c.items.forEach((it, k) => {
+      if (k > 0) y += sep.has(k) ? big : small;
+      itemLines(it).forEach((l, li) => {
+        // 行頭が全角の始め括弧（字面が右半分にある）なら半字ぶん戻し、字面の左端を他の折り返し行とそろえる
+        const open = /^[（「『]/.test(runText(l)) ? CARD.hang / 2 : 0;
+        const dx = li > 0 && itemHang(it) ? CARD.hang - open : 0;
+        tightText(s, [l], { x: ix + dx, y: r3(y + li * lineIn(CARD.size)), w: iw - dx, size: CARD.size });
+      });
+      y += tightH(itemLines(it).length, CARD.size);
     });
-    const end = y - g;
-    if (end > o.y + h - CARD.padY + 1e-6) throw new Error(`p${s.page} カード「${c.title}」: 本文の下端 ${r3(end)}in > ${r3(o.y + h - CARD.padY)}in`);
-    info.push(`${w}in（内側 ${iw}in・最長行 ${r3(need[i])}in）`);
+    if (y > o.y + h - CARD.padBot + 1e-6) throw new Error(`p${s.page} カード「${c.title}」: 本文の下端 ${r3(y)}in > ${r3(o.y + h - CARD.padBot)}in`);
+    info.push(`${w}in（内側 ${iw}in・最長行 ${r3(need[i])}in・下余白 ${r3(o.y + h - y)}in${sep.size ? `・区切り ${big}in` : ''}）`);
     x += w + o.gap;
   });
   console.log(`  p${s.page} カード: 幅 ${info.join(' / ')}、左右余白 ${r3(padX)}in、高さ ${h}in（下端 ${r3(o.y + h)}in）、項目間 ${r3(g)}in`);
 }
 
-/** 強調ボックス（行送りを詰めた版。22pt 太字・白地＋色枠・中央揃え・本文ゾーンの全幅）。下端 bottom に合わせて置き、上端を返す */
+/**
+ * 強調ボックス（行送りを詰めた版。22pt 太字・白地＋色枠・中央揃え・本文ゾーンの全幅）。下端 bottom に合わせて置き、上端を返す。
+ * 高さ: o.h（最小値）か、文字 + 上下 0.045in。文字は上下中央に置き、EMPH_LIFT だけ上げる
+ * （字面は行送りの枠の下寄りに出る。メイリオで字面の上 約 0.055in・下 約 0.007in の空き）。
+ */
+const EMPH_LIFT = 0.025;
 function emphTight(s, lines, o) {
   const size = o.size || 22, padY = 0.045;
   const th = tightH(lines.length, size);
-  const h = r3(th + 2 * padY);
+  const h = r3(Math.max(o.h || 0, th + 2 * padY));
   const y = r3(o.bottom - h);
   // カードの列と左右の端を揃える（本文ゾーンの全幅）
   s.box({ x: X0, y, w: BW, h, fill: C.white, radius: EMPH.radius, line: { color: o.lineColor || C.teal, width: EMPH.lineW } });
-  tightText(s, lines, { x: X0 + 0.1, y: r3(y + padY), w: BW - 0.2, size, bold: true, align: 'center' });
+  const ty = r3(y + Math.max(0.01, (h - th) / 2 - EMPH_LIFT));
+  tightText(s, lines, { x: X0 + 0.1, y: ty, w: BW - 0.2, size, bold: true, align: 'center' });
   return y;
 }
 
@@ -296,7 +324,8 @@ function tightTable(s, rows, o) {
         },
       };
     });
-    rowH.push(Math.ceil((maxLines * LS / 72 + (m[0] + m[2]) / 72) * 100 - 1e-6) / 100);
+    // 行高は 0.001in 単位で切り上げ（0.01in 単位だと 8 行で最大 0.08in 余計に要り、S5 が出典行の上に入らない）
+    rowH.push(Math.ceil((maxLines * LS / 72 + (m[0] + m[2]) / 72) * 1000 - 1e-6) / 1000);
     return cells;
   });
   const h = rowH.reduce((a, b) => a + b, 0);
@@ -359,7 +388,9 @@ async function main() {
         items: [
           brk(id, 'JSA 認定施設の 96.7% で麻酔科医が説明（2005 年調査）', '麻酔科医が'),
           [cut(id, '説明の責任は担当する麻酔科医（AAGBI 2017）', '説明の責任は担当する麻酔科医',
-            '2 列カード＋強調ボックス＋出典 2 行が 22pt で本文ゾーンに入らないため。出典表記は同じスライドの出典行（Yentis 2017, AAGBI）に残る')],
+            '22pt で 7.30in 要り、カード内側 5.6in では 2 行になる。左カードが 8 行になると、強調ボックス 2 行＋出典 2 行の上に' +
+            '入れたとき項目の間隔と下余白が 0 になる（7 行で項目間 0.076in・下余白 0.15in）。' +
+            '出典表記は同じスライドの出典行（Yentis 2017, AAGBI）に残る')],
           brk(id, '外科医の説明だけでは麻酔固有のリスクが抜けやすい', '麻酔固有'),
           [q(id, '動画は補助。責任は麻酔科医に残る')],
           [q(id, '研修医は自分の立場を伝える')],
@@ -381,8 +412,9 @@ async function main() {
   {
     const id = 'S4';
     const s = slide({ title: '何を話すか', chapter: 1, notes: notesOf(id), sources: sourcesOf(id) });
+    // 1 行の強調ボックスは高さ 0.55in（文字の上下に約 0.09in）、カードとの間は 0.28in（このスライドは高さに余裕がある）
     const ey = emphTight(s, [q(id, 'チェックリストを読み上げない。その患者の状態でのリスクに合わせて話す')],
-      { bottom: BOT2, lineColor: C.teal });
+      { bottom: BOT2, lineColor: C.teal, h: 0.55 });
     const risk1 = brk(id, 'よくある：吐き気、咽頭痛、歯・唇の損傷、しびれ、頭痛（脊麻）', '歯・唇');
     const risk2 = brk(id, '重大：神経・眼の障害、術中覚醒、アナフィラキシー、死亡', 'アナフィラキシー');
     cardRow(s, [
@@ -404,15 +436,20 @@ async function main() {
           [q(id, '質問と、それへの答えも記録')],
         ],
       },
-    ], { y: Y0, bottom: r3(ey - GAP), gap: GAP, maxItemGap: 0.22 });
+    ], { y: Y0, bottom: r3(ey - 0.28), gap: GAP, maxItemGap: 0.22 });
   }
 
   // ===== S5 リスクを数字で伝える（表 3列 × 7行＋見出し行） =====
-  // 22pt・行間 1.2 em のまま。2 行になる行が 4 つ（歯・硬膜穿刺後頭痛・術中覚醒・死亡）あり、
-  // tightTable 既定の余白 [3,6,3,6]pt では 5.08in と本文ゾーン（1.85〜6.46in）を超えるため、余白を [1,4,0.5,4]pt にする
-  // （pptxgenjs は margin[0] が 1 未満だとインチと解釈するので、上は 1pt）。
-  // 列幅は spec の目安（3.6/4.6/4.0）から、1 列目を最長の 13 字、3 列目を「Higgins 2002」が 1 行に入る幅にし、残りを 2 列目へ
-  // （2 列目は「10〜79%（危険因子 0〜4 個で）」が代替フォントの描画でも 1 行に入るよう、左右余白を 4pt に詰めて広げる）。
+  // 22pt・行間 1.2 em のまま。
+  // 術中覚醒は、条件ラベルと数値が別の行に分かれない位置で改行する（「約 1/19,600（筋弛緩薬使用 1/8,200、」／「帝王切開 1/670）」）。
+  //   「約 1/19,600」で切ると 2 行目「（筋弛緩薬使用 1/8,200、帝王切開 1/670）」が 6.95in 要り、2 列目を 7.15in にすると
+  //   1 列目が全角 7 字幅になって行数が増える（3 行に割っても 1 行増える）。上の位置なら 2 列目は 6.16in で済む。
+  // 高さ: 出典 2 行（y6.5）の上に入れるには、表全体を 12 行（見出し 1 ＋ 1 行の行 3 ＋ 2 行の行 4）以内にする必要がある
+  //   （行送り 0.367in × 12 行 ＝ 4.40in。本文ゾーンは 1.83〜6.46in の 4.63in）。
+  //   2 列目 6.16in・3 列目「Higgins 2002」が 1 行の 2.21in（＋左右余白 0.1in ずつ、合計 12.2in 以内）だと 1 列目は全角 9 字幅になり、
+  //   13 字の「歯の損傷（処置が要るもの）」を 2 行にすると 13 行になる → 最小限の短縮で 1 行にする（deviations に記録）。
+  //   「脊麻・硬膜外の永続的な障害」「硬膜穿刺後頭痛（産婦）」「麻酔が単独の原因の死亡」は 2 列目が 2 行の行なので 2 行に割る。
+  // セル余白: 左右 0.1in（7.2pt）。上下は 12 行が入る残りの 1pt ずつ（pptxgenjs は margin[0] が 1 未満だとインチと解釈する）。
   {
     const id = 'S5';
     const sources = srcFix(id, [['Cook TM, et al. Br J Anaesth 2009;102:179-190（NAP3）', null]],
@@ -423,17 +460,22 @@ async function main() {
     // 見出し行は spec の layout 行（列「事象」「頻度の目安」「出典」）
     const HEAD = ['事象', '頻度の目安', '出典'];
     if (!SPEC_MD.includes('列' + HEAD.map(h => `「${h}」`).join(''))) throw new Error(`${id}: 表の見出しが spec と違います`);
+    const tooth = cut(id, '歯の損傷（処置が要るもの）', '歯の損傷（要処置）',
+      '術中覚醒の改行位置を直すと 2 列目に 6.16in 要り、1 列目が全角 9 字幅になる。2 行にすると表が 13 行になり、' +
+      '22pt・行間 1.2em で出典 2 行の上に収まらない。「処置が要るもの」→「要処置」で意味は同じ');
+    const PAD = 7.2;   // セル左右余白（pt）= 0.1in
     const t = tightTable(s, [
       HEAD,
       [cell('術後の咽頭痛'), cell('挿管 45.4%、LMA 17.5%'), cell('Higgins 2002')],
       [cell('吐き気・嘔吐'), cell('10〜79%（危険因子 0〜4 個で）'), cell('Apfel 1999')],
-      [cell('歯の損傷（処置が要るもの）'), cellB('約 1/4,500。歯が悪いとオッズ比 50', '歯が'), cell('Warner 1999')],
-      [cell('硬膜穿刺後頭痛（産婦）'), cellB('硬膜外の偶発穿刺 1.5%、うち 52.1%。27G 脊麻 1.7%', 'うち'), cell('Choi 2003')],
-      [cell('術中覚醒'), cellB('約 1/19,600（筋弛緩薬使用 1/8,200、帝王切開 1/670）', '1/8,200'), cell('NAP5')],
-      [cell('脊麻・硬膜外の永続的な障害'), cell('10 万件に 2.0〜4.2 件'), cell('NAP3')],
-      [cell('麻酔が単独の原因の死亡'), cellB('1 万麻酔に 0.07〜0.21（国内 1994〜2005 年）', '（国内'), cellB('JSA 偶発症調査', '偶発')],
-    ], { x: X0, y: Y0, colW: [4.56, 5.31, 2.33], margin: [1, 4, 0.5, 4] });
-    console.log(`  p${s.page} 表: 下端 ${r3(t.y + t.h)}in、行高 ${t.rowH.join(' / ')}`);
+      [tooth, cell('約 1/4,500。歯が悪いとオッズ比 50'), cell('Warner 1999')],
+      [cellB('硬膜穿刺後頭痛（産婦）', '（産婦）'), cellB('硬膜外の偶発穿刺 1.5%、うち 52.1%。27G 脊麻 1.7%', 'うち'), cell('Choi 2003')],
+      [cell('術中覚醒'), cellB('約 1/19,600（筋弛緩薬使用 1/8,200、帝王切開 1/670）', '帝王切開'), cell('NAP5')],
+      [cellB('脊麻・硬膜外の永続的な障害', '永続的'), cell('10 万件に 2.0〜4.2 件'), cell('NAP3')],
+      [cellB('麻酔が単独の原因の死亡', '原因の'), cellB('1 万麻酔に 0.07〜0.21（国内 1994〜2005 年）', '（国内'), cellB('JSA 偶発症調査', '偶発')],
+    ], { x: X0, y: 1.83, colW: [3.33, 6.41, 2.46], margin: [1, PAD, 1, PAD] });
+    console.log(`  p${s.page} 表: 幅 ${r3(t.w)}in、下端 ${r3(t.y + t.h)}in、行高 ${t.rowH.join(' / ')}`);
+    if (t.w > 12.2 + 1e-6) throw new Error(`${id}: 表の幅 ${r3(t.w)}in > 12.2in`);
     if (t.y + t.h > BOT2 + 1e-6) throw new Error(`${id}: 表の下端 ${r3(t.y + t.h)}in > ${BOT2}in`);
   }
 
@@ -448,16 +490,19 @@ async function main() {
     const s = slide({ title: '意思決定能力と代諾', chapter: 3, notes: notesOf(id), sources });
     const ey = emphTight(s, brk(id, '緊急で同意がとれない：推定的同意で行い、緊急性・省いた理由・事後の説明を記録する', '緊急性'),
       { bottom: BOT2, lineColor: C.teal });
-    const why6 = '2 列カード＋強調ボックス＋出典 2 行が 22pt で本文ゾーンに入らないため';
+    const why6 = '2 列カード＋強調ボックス＋出典 2 行が 22pt で本文ゾーンに入らないため' +
+      '（右カードは 7 行で項目間 0.076in・下余白 0.15in。1 行増えると項目の間隔と下余白が 0 になる）';
     cardRow(s, [
       {
-        title: q(id, '能力の 4 要素'), titleColor: C.blue,
+        // 4 要素は 1 行ずつ詰めて並べ、原則の文は前の間隔を広げて区切る（4 要素の 5 つ目に見えないように）。
+        // 原則の文は字下げしない（字下げ 1 字ぶん左カードが広がると、右カードの「15〜17 歳…」が 1 行に入らない）
+        title: q(id, '能力の 4 要素'), titleColor: C.blue, sepBefore: [4],
         items: [
           [q(id, '選択を表明できる')],
           [q(id, '情報を理解できる')],
           [q(id, '自分のこととして認識できる')],
           [q(id, '比べて論理的に考えられる')],
-          brk(id, '成人は能力があると推定。認知症・高齢・前投薬だけで無能力と決めない', '認知症', '無能力'),
+          { lines: brk(id, '成人は能力があると推定。認知症・高齢・前投薬だけで無能力と決めない', '認知症', '無能力'), hang: false },
         ],
       },
       {

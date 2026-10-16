@@ -75,12 +75,12 @@ function spec(id) {
 // ---------------------------------------------------------------------------
 // 出典。16pt・幅 11.6in で 2 行に入らないものだけ、行の分け方をここで決める（文献は落とさない）。
 // items はライブラリに渡す項目（1 項目 = 1 行）。
-//  - S6: 3 文献のどの 2 つを ' / ' でつないでも 11.6in を超える（最短の組 11.72in）。指示の順に
-//        区切りの前後の空白を詰めると 2 行目「Yonekura … e032306/Hanai … 402-406」が 11.56in で入る（mode 'compact'）。
-//  - S2・S8: 区切りの空白を詰めても、（）を外しても（S2 は（）なし、S8 は「（2016）」だけ）、どの 2 文献も
-//        1 行に並ばない（S2 最短の組 12.89in、S8 は ASA の 1 文献だけで 11.12in）。文献を落とさず、
-//        文字は 1 字も変えずに、文献の途中の空白で改行する（mode 'wrapInside'。4-1 S8 と同じ扱い）。
+//  - S2・S6・S8: どの 2 文献も ' / ' でつなぐと 1 行に並ばない（S2 最短の組 12.89in、S6 は 11.72in、
+//        S8 は ASA の 1 文献だけで 11.12in）。文献を落とさず、文字は 1 字も変えずに、文献の途中の空白で
+//        改行する（mode 'wrapInside'。4-1 S8 と同じ扱い）。区切りは全行 ' / '（前後に空白）のまま。
 //        S2: 「…Cochrane Database Syst Rev」｜「2019;CD007293 / …」（誌名と年の間。11.58in / 8.96in）
+//        S6: 「…Yonekura H, et al. BMJ Open」｜「2019;9:e032306 / Hanai …」（誌名と年の間。10.31in / 8.20in）
+//            （以前は区切りの空白を詰めて「e032306/Hanai」としていたが、他スライドの ' / ' と書式がそろわない）
 //        S8: 「…for Preanesthesia Evaluation.」｜「Anesthesiology 2012;… / …」（題名と誌名の間。9.32in / 10.58in）
 // ---------------------------------------------------------------------------
 const SOURCE_LAYOUT = {
@@ -92,10 +92,10 @@ const SOURCE_LAYOUT = {
     ],
   },
   S6: {
-    mode: 'compact',
+    mode: 'wrapInside',
     items: [
-      'Yonekura H, et al. Anesth Analg 2018;126:1633-1640',
-      'Yonekura H, et al. BMJ Open 2019;9:e032306/Hanai S, et al. Sex Transm Dis 2025;52:402-406',
+      'Yonekura H, et al. Anesth Analg 2018;126:1633-1640 / Yonekura H, et al. BMJ Open',
+      '2019;9:e032306 / Hanai S, et al. Sex Transm Dis 2025;52:402-406',
     ],
   },
   S8: {
@@ -213,6 +213,13 @@ const r3 = v => Math.round(v * 1000) / 1000;
 const BOTTOM_2SRC = 6.42;
 const bottomOf = s => (!s.hasSources ? LAYOUT.body.bottom : (s.sourceTop < LAYOUT.source.y - 1e-6 ? BOTTOM_2SRC : LAYOUT.body.bottom));
 const ACCENT = C.vermilion;        // 要点の数値・語
+/**
+ * 強調ボックス（S2・S6・S7 で文字 24pt・下端 = 本文の下端にそろえる）。1 行のボックス（S2・S6）は高さ 0.80in・余白 0.1in。
+ * S7 は 2 行なので高さだけ 1.12in（実機メイリオ 2 行 1.0in ＋余白 0.06in）。
+ * 上の箇条書き（5 行・24pt）は行間 16pt で配り、箇条書きの下端（実機メイリオ推定）とボックスの間を 0.24in 以上あける。
+ */
+const KEY = { size: 24, h1: 0.8, margin1: 0.1, h2: 1.12, margin2: 0.06 };
+const KEY_BULLET_GAP = 16;
 
 /** 本文スライド（spec のタイトル・ノート・出典をそのまま渡す） */
 function contentSlide(deck, id, chapter) {
@@ -267,7 +274,8 @@ function itemCard(s, id, c) {
   const n = c.items.length;
   const free = bottom - top - hs.reduce((a, b) => a + b, 0);
   const g = n > 1 ? free / (n - 1) : 0;
-  if (n > 1 && g < 0.2) throw new Error(`${id} カード「${c.title}」: 項目間隔 ${r3(g)}in < 0.2in`);
+  const minG = c.minItemGap != null ? c.minItemGap : 0.2;
+  if (n > 1 && g < minG - 1e-6) throw new Error(`${id} カード「${c.title}」: 項目間隔 ${r3(g)}in < ${minG}in`);
   let cy = top;
   c.items.forEach((lines, i) => {
     s.text(lines, { x: r3(c.x + padX), y: r3(cy), w: iw, h: hs[i], size, gap: lineGap, color: C.dark });
@@ -379,10 +387,10 @@ async function main() {
       mark('白内障 19,557 件の RCT：合併症は両群とも 31.3/1,000 手術', ['両群とも', ACCENT]),
       mark('当日の検査で異常が出ても 61.6% はそのまま手術（ヘルニア）', ['61.6%', ACCENT]),
       mark('費用 2.55 倍（白内障）、7 日以内の再受診が増加（日帰り手術）', ['2.55 倍', ACCENT], ['再受診が増加', ACCENT]),
-    ], { y: 1.95, size: 24, gap: 14 });
-    const bh = 0.86, by = r2(bottomOf(s) - bh);
-    if (by - bb < 0.3) throw new Error(`${id}: 箇条書きと強調ボックスの間 ${r3(by - bb)}in < 0.3in`);
-    keyBox(s, id, '異常が出たとき何をするか決められない検査は、出さない', { x: X0, y: by, w: BW, h: bh, size: 28 });
+    ], { y: 1.95, size: 24, gap: KEY_BULLET_GAP });
+    const bh = KEY.h1, by = r2(bottomOf(s) - bh);
+    if (by - bb < GAP - 1e-6) throw new Error(`${id}: 箇条書きと強調ボックスの間 ${r3(by - bb)}in < ${GAP}in`);
+    keyBox(s, id, '異常が出たとき何をするか決められない検査は、出さない', { x: X0, y: by, w: BW, h: bh, size: KEY.size, margin: KEY.margin1 });
     console.log(`  ${id}: bullets bottom ${bb}, box y ${by}`);
     checkBottom(s, id, 'box', by + bh);
   }
@@ -391,20 +399,22 @@ async function main() {
   {
     const id = 'S3';
     const s = contentSlide(deck, id, 0);
-    // 列幅（spec の目安 4.4 / 2.6 / 2.6 / 2.6in から見直し。合計 12.2in）:
-    //  ASA 3〜4 を 2.91in にして「腎機能・心電図。」（8 字 2.738in）を 1 行に入れ、中手術のセルを
-    //  「腎機能・心電図。｜血算・凝固は考慮」と文の切れ目で 2 行に分ける（2.6in だと「血算・｜凝固は考慮」と割れる）。
-    //  その分 ASA 2 を 2.29in に（中手術「腎機能・｜心電図を｜併存症で考慮」の 3 行。行の高さは ASA 1 の大手術と同じ 3 行で変わらない）。
-    //  手術の侵襲 4.4in・ASA 1 2.6in は spec どおり（「中（初発の鼠径ヘルニア、」4.107in・「血算。腎機能と」2.396in が 1 行に入る）。
+    // 列幅は spec どおり 4.4 / 2.6 / 2.6 / 2.6in（ASA の 3 列は同じ幅。合計 12.2in）。
+    //  ASA 列のセル内の幅は 2.433in で、22pt 全角 7 字（2.396in）まで。8 字の「腎機能・心電図を」「腎機能・心電図。」
+    //  「血算・凝固は考慮」は 1 行に入らないので、7 字以内の語の切れ目で分ける:
+    //  小 ASA 3〜4「腎機能・｜心電図を考慮」、中 ASA 2「腎機能・｜心電図を｜併存症で考慮」、
+    //  中 ASA 3〜4「腎機能・｜心電図。血算・｜凝固は考慮」、大 ASA 2「血算、腎機能、｜心電図」。
+    //  行の高さは 1 行目 2 行・2〜3 行目 3 行（ASA 1 の大手術も 3 行）で、表の高さは変わらない。
+    //  手術の侵襲 4.4in は「中（初発の鼠径ヘルニア、」4.107in・「大（腹式子宮全摘、TURP、」が 1 行に入る幅。
     const head = ['手術の侵襲（NICE NG45）', 'ASA 1', 'ASA 2', 'ASA 3〜4'];
     const rows = buildRows(id, head, [
-      [brk('小（皮膚病変の切除、乳腺膿瘍ドレナージ）', '乳腺'), ['検査なし'], ['検査なし'], brk('腎機能・心電図を考慮', '考慮')],
+      [brk('小（皮膚病変の切除、乳腺膿瘍ドレナージ）', '乳腺'), ['検査なし'], ['検査なし'], brk('腎機能・心電図を考慮', '心電図')],
       [brk('中（初発の鼠径ヘルニア、静脈瘤、扁桃、膝関節鏡）', '静脈瘤'), ['検査なし'],
-        brk('腎機能・心電図を併存症で考慮', '心電図', '併存症'), brk('腎機能・心電図。血算・凝固は考慮', '血算')],
+        brk('腎機能・心電図を併存症で考慮', '心電図', '併存症'), brk('腎機能・心電図。血算・凝固は考慮', '心電図', '凝固')],
       [brk('大（腹式子宮全摘、TURP、甲状腺、人工関節、肺）', '甲状腺'), brk('血算。腎機能と 65 歳超の心電図は考慮', '65', '心電図'),
-        brk('血算、腎機能、心電図', '腎機能', '心電図'), brk('血算、腎機能、心電図、凝固は肝疾患で', '心電図', '凝固')],
+        brk('血算、腎機能、心電図', '心電図'), brk('血算、腎機能、心電図、凝固は肝疾患で', '心電図', '凝固')],
     ]);
-    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [4.4, 2.6, 2.29, 2.91] });
+    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [4.4, 2.6, 2.6, 2.6] });
     console.log(`  ${id}: table rows ${t.rowH.join('/')} h=${t.h}`);
     const line = '凝固・呼吸機能・胸部 X 線・尿検査は、ルーチンには出さない';
     rec(id, line);
@@ -440,8 +450,10 @@ async function main() {
     const id = 'S5';
     const s = contentSlide(deck, id, 1);
     // 列幅（spec の目安 2.2 / 5.6 / 4.4in から見直し。合計 12.2in）:
+    //  検査の列は「呼吸機能検査」（6 字 2.053in）を 1 行に入れるため 2.22in（セル内 2.053in）。
+    //  「12 誘導心電図」（2.197in）は入らないので「12 誘導｜心電図」の 2 行のまま。
     //  「心疾患・症状・リスク因子があり、」（5.476in）と「新しい呼吸器症状・所見があるとき」を 1 行に入れるため
-    //  出す相手を 5.65in に。出さない相手は「無症状で安定した心疾患の」（4.107in）が入る 4.35in。
+    //  出す相手を 5.65in に。出さない相手は「無症状で安定した心疾患の」（4.107in）が入る 4.33in。
     //  胸部 X 線の「ルーチンには出さない（NICE）。」は 5.215in で、どの配分でも入らないため 3 行に分ける。
     const head = ['検査', '出す相手', '出さない相手'];
     const rows = buildRows(id, head, [
@@ -450,10 +462,10 @@ async function main() {
       [['胸部 X 線'], ['新しい呼吸器症状・所見があるとき'], brk('ルーチンには出さない（NICE）。年齢も理由にならない', '出さない', '年齢')],
       [['心エコー'], brk('心不全の徴候、新しい息切れ、心雑音+症状、中等度以上の弁膜症', '心雑音'),
         brk('無症状で安定した心疾患の低〜中リスク手術', '低〜中')],
-      [brk('呼吸機能検査', '検査'), ['肺切除、原因不明の呼吸困難'], brk('それ以外はルーチンに出さない（ACP）', '出さない')],
+      [['呼吸機能検査'], ['肺切除、原因不明の呼吸困難'], brk('それ以外はルーチンに出さない（ACP）', '出さない')],
     ]);
     // 本文ゾーンに 0.47in 余るので、本文の 4 行に 0.08in ずつゆとりを足す（表の下端 6.27in）
-    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [2.2, 5.65, 4.35], extra: 0.08 });
+    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [2.22, 5.65, 4.33], extra: 0.08 });
     console.log(`  ${id}: table rows ${t.rowH.join('/')} h=${t.h}`);
     checkBottom(s, id, 'table', t.y + t.h);
   }
@@ -468,10 +480,10 @@ async function main() {
       mark('1 施設：手術患者の 94.8% に梅毒検査。要精査例の精査は 52.9%', ['94.8%', ACCENT], ['52.9%', ACCENT]),
       mark('手術前 1 週間以内の主な検査は『手術前医学管理料』に包括される', ['『手術前医学管理料』', C.blue]),
       mark('療担規則：検査は『診療上必要があると認められる場合』に', ['『診療上必要があると認められる場合』', C.blue]),
-    ], { y: 1.95, size: 24, gap: 14 });
-    const bh = 0.8, by = r2(bottomOf(s) - bh);
-    if (by - bb < 0.3) throw new Error(`${id}: 箇条書きと強調ボックスの間 ${r3(by - bb)}in < 0.3in`);
-    keyBox(s, id, '『病院のセットだから』は検査の根拠にならない。セットを見直す', { x: X0, y: by, w: BW, h: bh, size: 24, margin: 0.1 });
+    ], { y: 1.95, size: 24, gap: KEY_BULLET_GAP });
+    const bh = KEY.h1, by = r2(bottomOf(s) - bh);
+    if (by - bb < GAP - 1e-6) throw new Error(`${id}: 箇条書きと強調ボックスの間 ${r3(by - bb)}in < ${GAP}in`);
+    keyBox(s, id, '『病院のセットだから』は検査の根拠にならない。セットを見直す', { x: X0, y: by, w: BW, h: bh, size: KEY.size, margin: KEY.margin1 });
     console.log(`  ${id}: bullets bottom ${bb}, box y ${by}`);
     checkBottom(s, id, 'box', by + bh);
   }
@@ -480,11 +492,14 @@ async function main() {
   {
     const id = 'S7';
     const s = contentSlide(deck, id, 2);
-    // カード幅: 準備量のカードを 7.25in にして「MSBOS：術式別の準備量（C/T 比 1.5 以下）」（22pt 6.865in）を 1 行に入れる
-    // （内側 6.95in）。検査のカードは残りの 4.74in（内側 4.44in。「ABO は別の時点の 2 検体で確認」4.839in は 2 行）。
-    // 両カードとも本文 4 行・3 項目で高さがそろう。下の強調ボックスは 24pt・2 行。
-    const pad = 0.18, padX = 0.15, size = 22;
-    const wR = 7.25, wL = r3(BW - GAP - wR);
+    // カード幅: 準備量のカードを 7.4in にして「MSBOS：術式別の準備量（C/T 比 1.5 以下）」（22pt 6.865in）を
+    // 内側 7.1in に余裕をもって 1 行に入れる（メイリオは英数字が広いため）。検査のカードは残りの 4.59in
+    // （内側 4.29in。「交差適合の検体は 3 日以内」4.161in が 1 行、「ABO は別の時点の 2 検体で確認」4.839in は 2 行）。
+    // 両カードとも本文 4 行・3 項目で高さがそろう（区切り線の位置は、2 行の項目が左は 2 番目・右は 1 番目なので左右で違う）。
+    // 下の強調ボックスは 24pt・2 行（KEY.h2）。カードとの間を 0.36in あけるため、カードの上下余白 0.15in・
+    // 見出し 24pt・見出しと本文の間 0.08in・項目間 0.17in 以上に詰める。
+    const pad = 0.15, padX = 0.15, size = 22, titleSize = 24, titleGap = 0.08, minItemGap = 0.17;
+    const wR = 7.4, wL = r3(BW - GAP - wR);
     const L = {
       title: '検査', titleColor: C.blue,
       items: [['ABO・RhD・不規則抗体'], brk('ABO は別の時点の 2 検体で確認', '2 検体'), ['交差適合の検体は 3 日以内']],
@@ -498,13 +513,14 @@ async function main() {
       ],
     };
     const boxLines = brk('離島は血液の取り寄せに時間がかかる。在庫と搬送時間を前提に早めに決める', '在庫');
-    const bh = 1.0, by = r2(bottomOf(s) - bh);
-    const ch = r2(by - 0.26 - TOP);   // カードと強調ボックスの間 0.26in（最小 0.24in）
-    const need = Math.max(sepCardH({ ...L, pad, size }, 0.2), sepCardH({ ...R, pad, size }, 0.2));
+    const bh = KEY.h2, by = r2(bottomOf(s) - bh);
+    const ch = r2(by - 0.36 - TOP);   // カードと強調ボックスの間 0.36in（最小 0.24in）
+    const cc = { pad, padX, size, titleSize, titleGap, minItemGap };
+    const need = Math.max(sepCardH({ ...L, ...cc }, minItemGap), sepCardH({ ...R, ...cc }, minItemGap));
     if (need > ch + 1e-6) throw new Error(`${id}: カードの高さ不足（必要 ${need}in > ${ch}in）`);
-    itemCard(s, id, { ...L, x: X0, y: TOP, w: wL, h: ch, pad, padX, size });
-    itemCard(s, id, { ...R, x: r3(X0 + wL + GAP), y: TOP, w: wR, h: ch, pad, padX, size });
-    keyBox(s, id, boxLines, { x: X0, y: by, w: BW, h: bh, size: 24, margin: 0.1 });
+    itemCard(s, id, { ...L, ...cc, x: X0, y: TOP, w: wL, h: ch });
+    itemCard(s, id, { ...R, ...cc, x: r3(X0 + wL + GAP), y: TOP, w: wR, h: ch });
+    keyBox(s, id, boxLines, { x: X0, y: by, w: BW, h: bh, size: KEY.size, margin: KEY.margin2 });
     console.log(`  ${id}: cards h ${ch} (need ${need}), box y ${by}`);
     checkBottom(s, id, 'box', by + bh);
   }
@@ -519,7 +535,7 @@ async function main() {
       '血算は大手術の外来で早く。凝固は出血歴の問診が先',
       '心電図・X 線は症状と疾患で。低リスク手術では年齢だけで出さない',
       mark('院内セットは慣行。『異常が出たらどうするか』で決める', ['『異常が出たらどうするか』', ACCENT]),
-    ], { y: 1.98, size: 24, gap: 28 });
+    ], { y: 2.0, size: 24, gap: 31 });   // 行間 31pt で本文ゾーン（出典 2 行の上 6.42in）まで配る
     checkBottom(s, id, 'bullets', b);
   }
 

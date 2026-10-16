@@ -6,7 +6,7 @@
  * 内容（構成・文言・ノート・出典）の正本は同じディレクトリの spec.md。
  * スライド面の文言は spec の on-slide をそのまま使い（改行位置のみ調整。brk()/q() が spec と照合する）、
  * ノートと出典は spec.md から読み込む。spec から文言を変えた箇所は alt() で照合・記録し、ビルド時に一覧を出す。
- * render（PDF/JPG）はリポジトリの外に出す: DECK_RENDER_DIR（未指定なら OS の一時ディレクトリ）。
+ * render（PDF/JPG）はリポジトリの外に出す: DECK_RENDER_DIR（未指定なら scratchpad の render/<NAME>）。
  */
 const fs = require('fs');
 const os = require('os');
@@ -15,7 +15,8 @@ const { Deck, C, FONT, LAYOUT, fitInfo, heightFor } = require('../_lib/decklib')
 
 const NAME = '4-13_diabetes_drugs';
 const OUT = path.join(__dirname, NAME + '.pptx');
-const RENDER_DIR = process.env.DECK_RENDER_DIR || path.join(os.tmpdir(), 'decklib-render', NAME);
+const RENDER_DIR = process.env.DECK_RENDER_DIR ||
+  path.join('/tmp/claude-0/-home-user-Anes-lecture/0b714c0d-c11e-535a-a97c-0e6ce9d53e16/scratchpad/render', NAME);
 
 // ---------------------------------------------------------------------------
 // spec.md の読み込み（ノート・出典・スライド面の文言）
@@ -132,6 +133,8 @@ const r3 = v => Math.round(v * 1000) / 1000;
  * なので、その 0.24in 上。
  */
 const BOTTOM = 6.44;
+/** 箱で始まるスライド（S3・S6 のカード、S4 の表、S7 の指示例）の上端。金下線（8pt、下端 約1.576in）から 0.24in */
+const TOP_BOX = 1.82;
 
 // ---------------------------------------------------------------------------
 // 行送りを詰めたテキスト（S3・S6 のカードと強調ボックス、S7 の指示例）
@@ -162,8 +165,9 @@ function tightText(s, lines, o) {
 // ---------------------------------------------------------------------------
 // カード（S3・S6）: 角丸の塗り箱＋見出し＋「•」付きの項目。文字はすべて箱の内側。
 // 項目は語句の切れ目で 2 行に割り、2 行目は記号の右にぶら下げる。
+// 余白は上 padT・下 padB。見出し（24pt）は枠の上に行間の余りがあるので、見た目の上下余白が揃うよう下を厚くする。
 // ---------------------------------------------------------------------------
-const CARD = { padX: 0.1, padY: 0.07, titleSize: 24, size: 22, titleGap: 0.04, ind: 0.28 };
+const CARD = { padX: 0.1, padT: 0.06, padB: 0.11, titleSize: 24, size: 22, titleGap: 0.04, ind: 0.28 };
 
 function cardNeedW(c) {
   const t = fitInfo(runText(c.title), CARD.titleSize, 100).needIn;
@@ -172,13 +176,13 @@ function cardNeedW(c) {
 }
 function cardFixedH(c) {
   const nLines = c.items.reduce((a, it) => a + it.length, 0);
-  return 2 * CARD.padY + lineIn(CARD.titleSize) + CARD.titleGap + nLines * lineIn(CARD.size);
+  return CARD.padT + CARD.padB + lineIn(CARD.titleSize) + CARD.titleGap + nLines * lineIn(CARD.size);
 }
 function drawCard(s, c, x, y, w, h, itemGap) {
   s.box({ x: r3(x), y: r3(y), w: r3(w), h: r3(h), fill: C.bg, radius: 0.08 });
   const ix = x + CARD.padX, iw = w - 2 * CARD.padX;
-  tightText(s, [c.title], { x: ix, y: y + CARD.padY, w: iw, size: CARD.titleSize, bold: true, color: c.titleColor });
-  let yy = y + CARD.padY + lineIn(CARD.titleSize) + CARD.titleGap;
+  tightText(s, [c.title], { x: ix, y: y + CARD.padT, w: iw, size: CARD.titleSize, bold: true, color: c.titleColor });
+  let yy = y + CARD.padT + lineIn(CARD.titleSize) + CARD.titleGap;
   c.items.forEach(lines => {
     // 記号の枠は推定器（全角 1 字 = 0.342in）に合わせて広めに取り、本文の枠と重ねる（文字どうしの枠の重なりは無害）
     tightText(s, ['•'], { x: ix, y: yy, w: 0.35, size: CARD.size });
@@ -186,9 +190,10 @@ function drawCard(s, c, x, y, w, h, itemGap) {
     yy += lines.length * lineIn(CARD.size) + itemGap;
   });
   const end = yy - itemGap;
-  if (end > y + h - CARD.padY + 1e-6 || end + overhang(CARD.size) > y + h + 1e-6) {
-    throw new Error(`p${s.page} カード「${runText(c.title)}」: 高さ不足（本文の下端 ${r3(end)} > ${r3(y + h - CARD.padY)}）`);
+  if (end > y + h - CARD.padB + 1e-6 || end + overhang(CARD.size) > y + h + 1e-6) {
+    throw new Error(`p${s.page} カード「${runText(c.title)}」: 高さ不足（本文の下端 ${r3(end)} > ${r3(y + h - CARD.padB)}）`);
   }
+  return r3(y + h - end);   // 最終行の行送りの下端からカード下端まで
 }
 /**
  * 2 列のカード。幅は各カードの最長行に必要な幅を確保し、余りを等分。高さは y〜bottom。
@@ -206,11 +211,15 @@ function cardRow(s, cards, o) {
   if (gap < -1e-9) throw new Error(`p${s.page}: カードの高さが ${r3(-gap * (cards[0].items.length - 1))}in ほど足りません（h=${h}）`);
   gap = Math.max(0, gap);
   let x = X0;
-  cards.forEach((c, i) => { drawCard(s, c, x, o.y, ws[i], h, gap); x += ws[i] + GAP; });
-  console.log(`  p${s.page} カード: 幅 ${ws.join(' / ')}in（必要 ${need.map(r3).join(' / ')}）、高さ ${h}in、項目間 ${gap}in`);
+  const padB = cards.map((c, i) => { const p = drawCard(s, c, x, o.y, ws[i], h, gap); x += ws[i] + GAP; return p; });
+  console.log(`  p${s.page} カード: 幅 ${ws.join(' / ')}in（必要 ${need.map(r3).join(' / ')}）、${o.y}〜${r3(o.y + h)}in（高さ ${h}in）、` +
+    `項目間 ${gap}in、下余白 ${padB.join(' / ')}in（上 ${CARD.padT}in）`);
 }
 
-/** 強調ボックス（白地＋色枠。文字は太字・中央）。S2・S5 は 28pt の通常の行送り（decklib の box）。 */
+/**
+ * 強調ボックス（白地＋色枠。文字は太字・中央）。S2・S5 は 28pt の通常の行送り（decklib の box）。
+ * 枠の色はデッキ内のルール: 通常の要点はティール、危険の警告（S3 の正常血糖ケトアシドーシス）は赤（C.red = 危険）。
+ */
 const EMPH = { x: X0 + 0.6, w: BW - 1.2, radius: 0.1, lineW: 3.5 };
 function emphBox(s, y, h, lines, lineColor, size = 28) {
   s.box({
@@ -329,6 +338,9 @@ async function main() {
   // ===== S3 正常血糖ケトアシドーシス（2列カード + 強調ボックス） =====
   // 本文 17 行ぶんの項目が 2 列カード＋強調ボックスに入らないため、カード本文と強調ボックスは行送り 1.2 em。
   // それでも左のカードが 1 行あふれるので、項目 3 だけ語を詰めた（alt()）。
+  // 項目 3 を spec どおり 2 行（「手術ストレスと絶食が重なると」/「起きやすい」）にすると左カードは 9 行で、
+  // 0.37in 足りない（カードは上 TOP_BOX〜強調ボックスの 0.24in 上まで、項目間 0）。1 行で入れるには幅 約7.0in が要る。
+  // 強調ボックスは危険の警告なので赤枠（EMPH のルール）。
   {
     const id = 'S3';
     const s = slide({ title: '正常血糖ケトアシドーシス', chapter: 1, notes: notesOf(id), sources: sourcesOf(id) });
@@ -355,12 +367,17 @@ async function main() {
           brk(id, '輸液＋インスリン＋最初から 5〜10% ブドウ糖（K を先に測る）', '5〜10%'),
         ],
       },
-    ], { y: Y0, bottom: em.y - GAP, maxGap: 0.12 });
+    ], { y: TOP_BOX, bottom: em.y - GAP, maxGap: 0.12 });
   }
 
   // ===== S4 経口薬と GLP-1 の扱い（表 3列 × 6行＋見出し行） =====
-  // spec の列幅（3.2 / 3.4 / 5.6）では 6 行すべてが 2 行になり本文ゾーンに入らない。
-  // 3 列目を広げて SGLT2・SU 薬の行を 1 行にする（列幅の合計は 12.2in のまま）。
+  // spec の列幅（3.2 / 3.4 / 5.6）では 3 列目が狭く 6 行すべてが 2 行になり、表の高さ 5.37in が
+  // 本文ゾーン（TOP_BOX〜BOTTOM の 4.62in）に入らない（入るのは 2 行の行が 4 つまで）。
+  // メトホルミン・DPP-4・GLP-1・α-GI の 4 行は 3 列目がどの幅でも 2 行になるので、SGLT2 と SU 薬の行を
+  // 1 行に保つ必要があり、3 列目は「正常血糖ケトアシドーシス（→ S2、S3）」が 1 行に入る 6.52in が下限。
+  // 残り 5.68in（合計 12.2in）は、2 列目を「当日朝は飲まない」が 1 行に入る 2.91in、1 列目を 2.77in に配る
+  // （「GLP-1 受容体作動薬」を 1 行にするには 1 列目 3.28in が要り、2 列目が「3 日前から中止」の入る 2.52in を割る）。
+  // 「GLP-1 受容体作動薬」は「GLP-1 受容体」/「作動薬」、「α-GI、チアゾリジン」は「、」の後で折る。
   {
     const id = 'S4';
     const s = slide({ title: '経口薬と GLP-1 の扱い', chapter: 2, notes: notesOf(id), sources: sourcesOf(id) });
@@ -371,15 +388,17 @@ async function main() {
       [drug(q(id, 'メトホルミン')), brk(id, '2 日前から休薬（国内の目安）', '（国内').join('\n'), brk(id, '添付文書は手術前後を禁忌。造影剤では 48 時間', '造影剤').join('\n')],
       [drug(q(id, 'SU 薬、グリニド')), q(id, '当日休薬'), q(id, '絶食中の遷延性低血糖。ブドウ糖を準備')],
       [drug(q(id, 'DPP-4 阻害薬')), brk(id, '当日朝は休薬（英国は継続）', '（英国').join('\n'), brk(id, '低血糖はまれ。国内添付文書は手術前後を禁忌', '国内').join('\n')],
-      [drug(brk(id, 'GLP-1 受容体作動薬', '受容体').join('\n')), brk(id, '原則続ける（→ 4-3）', '（→').join('\n'), brk(id, '高リスクは流動食・胃エコー。休薬なら週 1 回製剤は 1 週前', '休薬').join('\n')],
-      [drug(brk(id, 'α-GI、チアゾリジン', 'チアゾ').join('\n')), brk(id, '当日朝は飲まない', '飲まない').join('\n'), brk(id, 'α-GI は食事とともに効く。チアゾリジンは体液貯留に注意', 'チアゾ').join('\n')],
+      [drug(brk(id, 'GLP-1 受容体作動薬', '作動薬').join('\n')), brk(id, '原則続ける（→ 4-3）', '（→').join('\n'), brk(id, '高リスクは流動食・胃エコー。休薬なら週 1 回製剤は 1 週前', '休薬').join('\n')],
+      [drug(brk(id, 'α-GI、チアゾリジン', 'チアゾ').join('\n')), q(id, '当日朝は飲まない'), brk(id, 'α-GI は食事とともに効く。チアゾリジンは体液貯留に注意', 'チアゾ').join('\n')],
     ];
-    const res = tightTable(s, t, { x: X0, y: 1.82, colW: [2.71, 2.57, 6.92] });
+    const res = tightTable(s, t, { x: X0, y: TOP_BOX, colW: [2.77, 2.91, 6.52] });
     console.log(`  p${s.page} 表: 行高 ${res.rowH.join(' / ')}in、下端 ${r3(res.y + res.h)}in`);
     if (res.y + res.h > BOTTOM + 0.011) throw new Error(`${id}: 表の下端 ${r3(res.y + res.h)} > ${BOTTOM}`);
   }
 
   // ===== S5 インスリンの術前調整（箇条書き5行 + 強調ボックス） =====
+  // 色の使い分け: 青＝項目の頭、バーミリオン＝数値（75〜80%、50%）、赤＝危険（絶対に抜かない）。
+  // 赤とバーミリオンは色覚で見分けにくいので、数値以外にバーミリオンを使わない（「静注インスリン持続」は太字の黒）。
   {
     const id = 'S5';
     const s = slide({ title: 'インスリンの術前調整', chapter: 3, notes: notesOf(id), sources: sourcesOf(id) });
@@ -388,7 +407,7 @@ async function main() {
       mark(q(id, '中間型（NPH）：当日朝は 50%'), ['中間型（NPH）：', C.blue], ['50%', C.vermilion]),
       mark(q(id, '速効型・超速効型：絶食中は打たない（補正分だけ）'), ['速効型・超速効型：', C.blue]),
       mark(q(id, '1 型糖尿病：基礎インスリンは絶対に抜かない（抜くと DKA）'), ['1 型糖尿病：', C.blue], ['絶対に抜かない', C.red]),
-      mark(q(id, '1 食を超える絶食、ポンプが使えない：静注インスリン持続へ'), ['静注インスリン持続', C.vermilion]),
+      mark(q(id, '1 食を超える絶食、ポンプが使えない：静注インスリン持続へ'), ['静注インスリン持続', C.dark]),
     ], BUL);
     const lines = brk(id, 'ポンプ（CSII）は条件を満たせば継続。術野から離し、対極板と電気メスの間に置かない', '術野');
     const by = BOTTOM - 0.04 - EMPH_H;
@@ -422,12 +441,15 @@ async function main() {
           brk(id, 'デキサメタゾン（PONV 予防）で上がる', '（PONV'),
         ],
       },
-    ], { y: Y0, bottom: em.y - GAP, maxGap: 0.12 });
+    ], { y: TOP_BOX, bottom: em.y - GAP, maxGap: 0.12 });
   }
 
   // ===== S7 当日の指示の例（大きなボックス1つに指示例6行 + 下に1行） =====
   // 指示例 6 項目は 22pt で 10 行になる。行送り 1.2 em で箱に入れ、項目の頭（「：」まで）を青の太字にして区切る。
   // 2 行目は 1 字ぶん下げる。
+  // 箱の下余白は上より厚く取る（最終行が箱の下端に寄って見えないように）。10 行＋下の 1 行＋2 行の出典で
+  // 縦の余りは 0.2in 弱しかなく、項目間に見える大きさの余白（0.05in × 5）は入らないので、余りは下余白に充てる。
+  // 「◯/◯」は spec の文言（4 個とも U+25EF）のまま。描画確認で大きさが揃わないのは代替フォントのため。
   {
     const id = 'S7';
     const s = slide({ title: '当日の指示の例', chapter: 3, notes: notesOf(id), sources: sourcesOf(id) });
@@ -440,23 +462,25 @@ async function main() {
       (() => { const l = brk(id, '血糖：入室時と 1〜2 時間ごと。100 未満で対策、70 未満はブドウ糖、180 以上が続けばインスリン', '70 未満'); return [mark(l[0], ['血糖：', lab]), l[1]]; })(),
       [mark(q(id, '嘔気・腹痛・頻呼吸、または血糖 235 超が 2 回：血液ガスとケトン体'), ['嘔気・腹痛・頻呼吸、または血糖 235 超が 2 回：', lab])],
     ];
-    const PAD = { x: 0.14, y: 0.08 }, IND = 0.34;
+    const PAD = { x: 0.14, top: 0.08, bottom: 0.14 }, IND = 0.34;
     const nLines = items.reduce((a, it) => a + it.length, 0);
-    const boxH = r3(2 * PAD.y + nLines * lineIn(22));
-    const footH = heightFor(1, 24, 0);
-    if (Y0 + boxH + GAP + footH > BOTTOM + 1e-9) throw new Error(`${id}: 箱 ${boxH} + 下の 1 行が ${BOTTOM} を超えます`);
-    s.box({ x: X0, y: Y0, w: BW, h: boxH, fill: C.bg, radius: 0.08 });
-    let y = Y0 + PAD.y;
+    const boxH = r3(PAD.top + PAD.bottom + nLines * lineIn(22));
+    const footH = BOX_H[24];   // 24pt 1 行の枠（decklib / lint の下限。実機メイリオ 1.5 em でも警告なし）
+    const by = TOP_BOX;
+    if (by + boxH + GAP + footH > BOTTOM + 1e-9) throw new Error(`${id}: 箱 ${boxH} + 下の 1 行が ${BOTTOM} を超えます`);
+    s.box({ x: X0, y: by, w: BW, h: boxH, fill: C.bg, radius: 0.08 });
+    let y = by + PAD.top;
     const iw = BW - 2 * PAD.x;
     items.forEach(lines => {
       tightText(s, [lines[0]], { x: X0 + PAD.x, y, w: iw, size: 22 });
       if (lines.length > 1) tightText(s, lines.slice(1), { x: X0 + PAD.x + IND, y: y + lineIn(22), w: iw - IND, size: 22 });
       y += lines.length * lineIn(22);
     });
-    const fy = r3(Y0 + boxH + GAP + (BOTTOM - (Y0 + boxH + GAP) - footH) / 2);
+    const fy = r3(by + boxH + GAP + (BOTTOM - (by + boxH + GAP) - footH) / 2);
     s.text([mark(q(id, '配合剤は成分名で確認。止めた薬は再開日まで書く'), ['止めた薬は再開日まで書く', C.vermilion])],
       { x: X0, y: fy, w: BW, h: footH, size: 24, bold: true, align: 'center' });
-    console.log(`  p${s.page} 指示例: 箱 ${Y0}〜${r3(Y0 + boxH)}in（${nLines} 行）、下の 1 行 ${fy}〜${r3(fy + footH)}in`);
+    console.log(`  p${s.page} 指示例: 箱 ${by}〜${r3(by + boxH)}in（${nLines} 行、余白 上 ${PAD.top} / 下 ${PAD.bottom}in）、` +
+      `下の 1 行 ${fy}〜${r3(fy + footH)}in`);
   }
 
   // ===== S8 まとめ（箇条書き5行） =====
