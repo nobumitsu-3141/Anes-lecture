@@ -341,13 +341,16 @@ function tightTable(s, rows, o) {
 
 // ---------------------------------------------------------------------------
 // 出典: spec の sources 行を 16pt・幅 11.6in の 2 行に収める（文献は落とさない）
-//  0) ライブラリ既定（' / ' の区切りでだけ改行）で 2 行に入ればそのまま渡す。
-//  1) 文言はそのままで、文献の途中の語の切れ目でも改行する（区切り > 和文の語の切れ目・「et al.」の後 >
-//     誌名と年の間 > その他の欧文の空白 > 著者名の途中（読点の後）。数値と単位の間、「et」と「al.」の間では割らない）。
-//  2) 入らなければ区切りの前後の空白を詰める（' / ' → '/'）。
-//  3) それでも入らなければ（）内の補足を外す（外す数が最小の形。空白は詰めない形を優先）。
-//  4) それでも入らないスライドだけ、extra（S6・S7 の doi、S9 の頁の略記と和文の空白 1 か所）を当てる。
-//  1)〜3) は改行位置の段（誌名と年の間まで → その他の欧文の空白まで → 著者名の途中まで）ごとに試し、
+//  0) 文献 1 件が 1 行に収まり、2 行以内に入ればそのまま渡す（ライブラリが文献の区切りで改行する）。
+//  1) 2 件以上を 1 行に並べるスライドでは、区切りを全スライドで「/」（前後の空白なし）にそろえる。
+//     S8 は前後に空白を入れた「 / 」では 2 行目が 11.6in を超えるので、そろえるなら空白なしの形になる。
+//  2) 文言はそのままで、文献の区切りで割る。割れなければ文献の途中で割る（和文の語の切れ目・「et al.」の後 >
+//     誌名と年の間 > その他の欧文の空白 > 「年;巻:」と頁の間 > 著者名の途中（読点の後）。数値と単位の間、
+//     「et」と「al.」の間では割らない）。3 件の文献のうち 2 件を 1 行に並べると 11.6in を超えるスライド
+//     （S3・S4・S5・S6・S7・S9）は、文献の区切りだけでは 2 行に入らない。
+//  3) 入らなければ（）内の補足を外す（外す数が最小の形）。
+//  4) それでも入らないスライドだけ、extra（S6・S7 の doi）を当てる。
+//  2)〜3) は改行位置の段（誌名と年の間まで → その他の欧文の空白まで → 頁の前まで → 著者名の途中まで）ごとに試し、
 //  著者名の途中（「Douketis JD,」⏎「et al.」など）で割るよりは（）内の補足を外して区切りで割る方をとる。
 //  実機メイリオの字幅（欧文は広い）でも 11.6in に入ることを確かめる。形を変えたものは DEVIATIONS に記録。
 // ---------------------------------------------------------------------------
@@ -385,12 +388,12 @@ function libLines(items) {
 const isCJK = ch => ch != null && ch.codePointAt(0) > 0x24F;
 const isDigit = ch => /[0-9]/.test(ch || '');
 /** str（区切り sep で文献をつないだもの）を 2 行に割る。最良の割り方 {a, b, rank} か null */
-function split2(str, sep, maxRank = Infinity) {
+function split2(str, sep, maxRank = Infinity, sepAt = null) {
   if (srcFits(str)) return { a: str, b: null, rank: 0 };
   const cands = [];
   for (let i = 1; i < str.length; i++) {
     let a, b, rank;
-    if (str.startsWith(sep, i)) { a = str.slice(0, i); b = str.slice(i + sep.length); rank = 0; }
+    if (sepAt ? sepAt.has(i) : str.startsWith(sep, i)) { a = str.slice(0, i); b = str.slice(i + sep.length); rank = 0; }
     else if (str[i] === ' ') {
       if (str.startsWith(' / ', i) || str.startsWith(' / ', i - 2)) continue;   // 区切りの中
       a = str.slice(0, i); b = str.slice(i + 1);
@@ -404,6 +407,8 @@ function split2(str, sep, maxRank = Infinity) {
       else rank = 3;                                                          // その他の欧文の空白
     } else if ((str[i - 1] === '／' || str[i - 1] === '・') && str[i] !== ' ') {
       a = str.slice(0, i); b = str.slice(i); rank = 1;                        // 和文の中黒・斜線の後
+    } else if (/(19|20)\d\d;\d+:$/.test(str.slice(0, i)) && isDigit(str[i])) {
+      a = str.slice(0, i); b = str.slice(i); rank = 3.5;                      // 「年;巻:」と頁の間
     } else continue;
     a = a.trim(); b = b.trim();
     if (rank <= maxRank && a && b && srcFits(a) && srcFits(b)) cands.push({ a, b, rank });
@@ -418,21 +423,23 @@ function combos(arr, k, start = 0) {
   for (let i = start; i <= arr.length - k; i++) for (const rest of combos(arr, k - 1, i + 1)) out.push([arr[i], ...rest]);
   return out;
 }
+/** 1 行に 2 件以上を並べるときの区切り（全スライド共通） */
+const SRC_SEP = '/';
 /** extra: [[元, 後], ...]（（）を外すだけでは入らないスライドの追加の縮め方） */
 function sourcesOf(id, extra = []) {
   const spec = SPEC[id] && SPEC[id].sources;
   if (!spec) return undefined;
   const items0 = spec.split(' / ');
   const lib = libLines(items0);
-  if (lib && lib.length <= 2) return items0;
+  // 文献 1 件ずつの行で 2 行以内に入る（区切りが画面に出ない）ときはそのまま
+  if (lib && lib.length <= 2 && lib.length === items0.length) return items0;
   const parens = [];
   items0.forEach((it, ii) => { for (const mm of it.matchAll(/（[^（）]*）/g)) parens.push({ ii, text: mm[0] }); });
   for (let ne = 0; ne <= extra.length; ne++) {
-    for (const E of combos(extra, ne)) for (const maxRank of [2, 3, 4]) {
+    for (const E of combos(extra, ne)) for (const maxRank of [2, 3, 3.5, 4]) {
       for (let k = 0; k <= parens.length; k++) {
-        // 同じ段階では区切りの空白を残す形と詰める形を比べ、改行位置のよい方（同順位なら空白を残す方）をとる
         let best = null;
-        for (const sep of [' / ', '/']) {
+        for (const sep of [SRC_SEP]) {
           for (const P of combos(parens, k)) {
             const items = items0.map((it, ii) => {
               let t = it;
@@ -440,7 +447,10 @@ function sourcesOf(id, extra = []) {
               for (const [from, to] of E) t = t.replace(from, to);
               return t;
             });
-            const r = split2(items.join(sep), sep, maxRank);
+            // 区切りの位置（文献の中の「/」（JCS/JHRS、doi など）と区別する）
+            const sepAt = new Set();
+            items.reduce((pos, it, ii) => { if (ii) sepAt.add(pos); return pos + (ii ? sep.length : 0) + it.length; }, 0);
+            const r = split2(items.join(sep), sep, maxRank, sepAt);
             if (r && (!best || r.rank < best.r.rank)) best = { r, P, E, sep };
           }
         }
@@ -449,10 +459,15 @@ function sourcesOf(id, extra = []) {
           const sep = best.sep;
           const lines = best.r.b ? [best.r.a, best.r.b] : [best.r.a];
           const what = [];
-          if (sep === '/') what.push('区切りの前後の空白を詰めた');
+          // 画面に出る区切りの数（区切りで改行したらその 1 つは出ない）
+          const shownSeps = items0.length - 1 - (best.r.b != null && best.r.rank === 0 ? 1 : 0);
+          if (shownSeps > 0) {
+            what.push('区切りの前後の空白を詰めた（区切りの書式を全スライドでそろえるため）');
+          }
           if (best.P.length) what.push(`（）内の補足 ${best.P.map(p => p.text).join('・')} を外した`);
           for (const [from, to] of best.E) what.push(to ? `「${from}」→「${to}」` : `「${from}」を外した`);
-          if (best.r.rank > 0) what.push('文献の途中の語の切れ目で改行');
+          if (best.r.rank === 3.5) what.push('文献の途中（「年;巻:」と頁の間）で改行');
+          else if (best.r.rank > 0) what.push('文献の途中の語の切れ目で改行');
           DEVIATIONS.push(`${id} 出典: 「${spec}」→「${lines.join(' ⏎ ')}」（16pt・2 行に収めるため。${what.join('、')}）`);
           return lines;
         }
@@ -590,7 +605,7 @@ async function main() {
           (() => { const l = brk(id, '腎機能は eGFR ではなく CrCl（Cockcroft-Gault）', 'CrCl'); return [mark(l[0], [l[0], null]), mark(l[1], ['CrCl', null])]; })(),
           // spec のスライド番号「S6」は画面に出ない（ページ番号は表紙を数えないので区域麻酔①は「5」）。参照先を題で示す
           (() => {
-            const str = alt(id, '脊髄幹麻酔なら 72 時間（→ S6）', 'S6', '区域麻酔①',
+            const str = alt(id, '脊髄幹麻酔なら 72 時間（→ 区域麻酔①）', 'S6', '区域麻酔①',
               'spec のスライド番号 S6 は画面に出ず、画面のページ番号では区域麻酔①は 5 のため、参照先をスライドの題で示した');
             const l = splitAt(id, str, ['（→']);
             return [mark(l[0], [l[0], null]), l[1]];
@@ -732,20 +747,18 @@ async function main() {
   // ===== S9 術前指示の書き方（大きなボックス1つに指示例4行＋下に1行） =====
   // 指示例 4 項目は 22pt で 9 行。行送り 1.2 em で箱に入れ、項目の 2 行目以降は 1 字ぶん下げる。
   // 患者 A（項目 1・2）と患者 B（項目 3・4）の間を少し広く空け、細い線で区切る（線の上下に約 0.1in）。
-  // 伏せ字の「◯」（U+25EF 大きな丸。spec の表記）は文字より大きな円で描かれ行から浮くので、通常の大きさの
-  // 「○」（U+25CB）にする（伏せ字の記号の字形だけの変更。deviations に記録）。
+  // 伏せ字の「◯」（U+25EF 大きな丸。spec の表記）は文字より大きな円で描かれ行から浮くので、全角の漢数字の
+  // 「〇」（U+3007）にする（伏せ字の記号の字形だけの変更。deviations に記録）。「○」（U+25CB）は「/」の直後で
+  // 欧文用の字形に替わり（LibreOffice の描画）、「○/○」の 2 つの丸の大きさがそろわないため使わない。
   {
     const id = 'S9';
-    // 出典は（）内の補足を外し区切りの空白を詰めても 2 行に入らないため、頁の範囲を略記し、和文の題の空白を 1 か所詰める
-    // （「2020 年」の前後の空白は他のスライドと同じに残す）。
-    const s = slide({ title: '術前指示の書き方', chapter: 3, notes: notesOf(id),
-      sources: sourcesOf(id, [
-        ['2020 年改訂版 不整脈薬物治療ガイドライン', '2020 年改訂版不整脈薬物治療ガイドライン'],
-        ['2019;179:1469-1478', '2019;179:1469-78'],   // 頁の範囲の略記（Vancouver 式。情報は落ちない）
-      ]) });
+    // 出典は（）内の補足を外し区切りの空白を詰めても、文献の区切りや欧文の空白では 2 行に入らない
+    // （1 行目の 2 件だけで 11.6in を超え、2 行目の和文の指針 9.24in の前に置ける残りは 2.2in）。
+    // 文言は変えず（頁の範囲の略記はしない）、PAUSE の「2019;179:」と頁「1469-1478」の間で改行する。
+    const s = slide({ title: '術前指示の書き方', chapter: 3, notes: notesOf(id), sources: sourcesOf(id) });
     const lab = BLUE;
-    const MARU = str => str.split('◯').join('○');
-    DEVIATIONS.push(`${id} 文言: 伏せ字の「◯」（U+25EF）→「○」（U+25CB）。「◯/◯ 20 時」「◯◯内科」「◯◯医師」「◯/◯ 8 時」` +
+    const MARU = str => str.split('◯').join('〇');
+    DEVIATIONS.push(`${id} 文言: 伏せ字の「◯」（U+25EF）→「〇」（U+3007）。「◯/◯ 20 時」「◯◯内科」「◯◯医師」「◯/◯ 8 時」` +
       '「『◯日前から中止』」の 5 か所（U+25EF は文字より大きな円で描かれ、行から浮くため。字形だけの変更）');
     const A = brk(id, '患者 A（心房細動）エリキュース 5 mg 1 日 2 回：最終内服は手術 4 日前の夜（◯/◯ 20 時）。脊髄くも膜下麻酔の予定のため 72 時間以上あける（9 時入室で約 85 時間）。ブリッジなし', '手術 4 日前', '72 時間以上').map(MARU);
     const Bl = MARU(q(id, '再開：術後 2 日目の夜、止血を確認してから。処方医（◯◯内科）に連絡済み'));
