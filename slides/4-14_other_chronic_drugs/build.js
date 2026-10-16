@@ -8,16 +8,11 @@
  * ノートと出典は spec.md から読み込む。spec から形を変えたところはビルド時に deviations として一覧を出す。
  * render（PDF/JPG）はリポジトリの外に出す: DECK_RENDER_DIR（未指定なら scratchpad の render/<NAME>）。
  *
- * 密度への対応（文言を変えずに収めるための組版上の工夫）:
- *  - カード・強調ボックスの本文は 22pt 以上のまま行送りを 1.2 em にする（1 行 1 枠の s.text を 1.2 em おきに置く。
- *    4-12・4-13 と同じ方式）。
- *  - 表は 3-11 の tightTable（行間 1.2 em、余白 [3,6,3,6]pt）を写して使う。列幅は spec の値（目安）に
- *    できるだけ近づけ、語句の切れ目で改行したときに表が本文ゾーンに入る幅にする（合計 12.2in）。
- *  - S5・S6 の表と S7 のカード本文は、22pt では tightTable・列幅の見直しをしても本文ゾーンに入らず、
- *    薬剤名・数値を落とさずに短くする方法もない。文言は変えずに、その部分だけ文字を小さくした
- *    （S5 16pt・S6 18pt・S7 のカード本文 18pt。deviations に記載。spec 側で分割か削減が必要）。
- *    S5 は 17pt だとセルの上下余白が 1〜2pt しか取れず、列挙（SSRI・SNRI・三環系）も途中で折れるため、
- *    16pt にしてセルの上下余白 3pt（0.04in）と語句の切れ目での改行を確保した。
+ * 組版の方針（文言を変えずに 22pt 以上で収める）:
+ *  - カード・強調ボックスの本文は 22pt 以上のまま行送りを 1.2 em にする（1 行 1 枠の s.text を 1.2 em おきに置く）。
+ *  - 表は 3-11 の tightTable（行間 1.2 em、余白 [3,6,3,6]pt、22pt）を写して使う（行内の部分装飾にだけ対応を足した）。
+ *    列幅は spec の値（目安）で入らないときだけ、語句の切れ目で改行して本文ゾーンに入る幅に見直す（合計 12.2in）。
+ *  - 本文ゾーン: x 0.55〜12.78in、y 1.85in〜（出典 2 行の文字の上端 約 6.68in の 0.24in 上 = 6.44in）。
  */
 const fs = require('fs');
 const path = require('path');
@@ -80,6 +75,7 @@ const USED = {};
 /** spec の文言そのまま（照合のみ） */
 function q(id, str) {
   if (!SPEC[id].quoted.includes(str)) throw new Error(`${id}: 「${str}」は spec の on-slide にありません`);
+  if (/【要確認/.test(str)) throw new Error(`${id}: 【要確認】の注記はスライド面に出さない`);
   (USED[id] = USED[id] || new Set()).add(str);
   return str;
 }
@@ -135,10 +131,9 @@ const X0 = LAYOUT.body.x;        // 0.55
 const XR = LAYOUT.body.right;    // 12.78
 const BW = XR - X0;              // 12.23
 const TOP = 1.85;                // 本文の上端
-const TOP_T = 1.82;              // 表・詰まったカードの上端（金下線 8pt の下端 1.576in から 0.24in 以上）
 /**
- * 本文の下端。全スライドで出典が 2 行（枠 y6.5・下揃え。PowerPoint のメイリオ 16pt 2 行で文字の上端 約6.68in）
- * なので、その 0.24in 上。
+ * 本文の下端。出典が 2 行（枠 y6.5・下揃え。PowerPoint のメイリオ 16pt 2 行で文字の上端 約6.68in）なら
+ * その 0.24in 上の 6.44in。出典が 1 行（y6.85）のスライドでも同じ値にそろえる。
  */
 const BOTTOM = 6.44;
 const GAP = 0.24;                // 要素間の最小間隔（0.6cm）
@@ -169,8 +164,8 @@ function tightText(s, lines, o) {
 }
 
 // ---------------------------------------------------------------------------
-// カード（S4）: 角丸の塗り箱＋見出し＋「•」付きの項目（文字はすべて箱の内側）。
-// 項目は語句の切れ目で 2 行に割り、2 行目以降は記号の右にぶら下げる。
+// カード（S4・S9）: 角丸の塗り箱＋見出し＋「•」付きの項目（文字はすべて箱の内側）。
+// 項目は語句の切れ目で 2 行以上に割り、2 行目以降は記号の右にぶら下げる。
 // ---------------------------------------------------------------------------
 // padY は上の余白、padB は下の余白（最終行を箱の下端から離す）
 const CARD = { padX: 0.1, padY: 0.08, padB: 0.15, titleSize: 24, size: 22, titleGap: 0.06, ind: 0.28 };
@@ -201,6 +196,7 @@ function drawCard(s, c, x, y, w, h, itemGap) {
   });
   const end = yy - itemGap;
   if (end > y + h - CARD.padB + 1e-6) throw new Error(`p${s.page} カード「${runText(c.title)}」: 高さ不足（本文の下端 ${r3(end)} > ${r3(y + h - CARD.padB)}）`);
+  return end;
 }
 
 /** 行送りを詰めた強調ボックス（白地＋色枠・太字・中央）。下端 yBottom に合わせて置く。戻り値 {y, h} */
@@ -208,10 +204,11 @@ const EMPH = { radius: 0.1, lineW: 3.5, padY: 0.04, padX: 0.07 };
 function emphTightH(n, size) { return r3(2 * EMPH.padY + n * lineIn(size) + overhang(size)); }
 function emphTight(s, o) {
   const size = o.size || 24;
-  const h = emphTightH(o.lines.length, size);
+  const h = r3(Math.max(emphTightH(o.lines.length, size), o.minH || 0));
   const y = r3(o.yBottom - h);
   s.box({ x: r3(o.x), y, w: r3(o.w), h, fill: C.white, radius: EMPH.radius, line: { color: o.lineColor, width: EMPH.lineW } });
-  tightText(s, o.lines, { x: o.x + EMPH.padX, y: y + EMPH.padY, w: o.w - 2 * EMPH.padX, size, bold: true, align: 'center' });
+  const th = emphTightH(o.lines.length, size) - 2 * EMPH.padY;
+  tightText(s, o.lines, { x: o.x + EMPH.padX, y: y + (h - th) / 2, w: o.w - 2 * EMPH.padX, size, bold: true, align: 'center' });
   return { y, h };
 }
 
@@ -219,14 +216,16 @@ function emphTight(s, o) {
  * 行の多い表（3-11_local_anesthetics/build.js の tightTable を写したもの）。decklib の s.table と同じ見た目
  * （見出し行 D9D9D9・太字、罫線 BFBFBF 1pt、上下中央）で、行間だけを固定値 LS pt（= 1.2 em）に詰める。
  * 見出し行も本文と同じ左揃え。セル幅の検査は decklib と同じ推定器（lint 式、全角 ×1.12）で行い、
- * 重なり検査用の登録も同じく行う。cell: 文字列（'\n' で改行）| {text, color, bold, align}
- * o.size（既定 22）・o.margin（既定 [3,6,3,6]pt）は S5・S6 だけ変える（deviations に記載）。
+ * 重なり検査用の登録も同じく行う。
+ * cell: 文字列（'\n' で改行）| {text: 文字列 | 行の配列（行は文字列か mark() の run 配列）, color, bold, align}
+ * （3-11 からの変更は、行内の部分装飾（run 配列）を受け付けるようにしたことだけ）
  */
 function tightTable(s, rows, o) {
   const size = o.size || 22, LS = o.lineSpacing || size * 1.2;
   const m = o.margin || [3, 6, 3, 6];   // pt: 上, 右, 下, 左
   const colW = o.colW, nCol = colW.length;
   const w = colW.reduce((a, b) => a + b, 0);
+  if (w > TABLE_W + 1e-6) throw new Error(`p${s.page} 表の幅 ${r3(w)}in > ${TABLE_W}in`);
   const rowH = [];
   const out = rows.map((row, ri) => {
     if (row.length !== nCol) throw new Error(`p${s.page} 表 行${ri + 1}: 列数 ${row.length} ≠ ${nCol}`);
@@ -234,25 +233,31 @@ function tightTable(s, rows, o) {
     let maxLines = 1;
     const cells = row.map((cell, ci) => {
       const c = typeof cell === 'string' ? { text: cell } : cell;
-      const lines = c.text.split('\n');
+      const lines = Array.isArray(c.text) ? c.text : c.text.split('\n');
       const avail = colW[ci] - (m[1] + m[3]) / 72;
       lines.forEach(l => {
-        const fi = fitInfo(l, size, avail);
+        const fi = fitInfo(runText(l), size, avail);
         if (!fi.ok) {
-          throw new Error(`p${s.page} 表 行${ri + 1}列${ci + 1}「${l}」がセル幅に収まりません` +
+          throw new Error(`p${s.page} 表 行${ri + 1}列${ci + 1}「${runText(l)}」がセル幅に収まりません` +
             `（推定 ${fi.needIn}in > ${avail.toFixed(3)}in、約${fi.overChars}字オーバー）`);
         }
       });
       maxLines = Math.max(maxLines, lines.length);
       const color = c.color || C.dark, bold = c.bold != null ? c.bold : head;
-      return {
-        text: lines.map((l, li) => ({
-          text: l,
+      const runs = [];
+      lines.forEach((l, li) => {
+        const rl = (Array.isArray(l) ? l : [l]).map(r => (typeof r === 'string' ? { text: r } : r));
+        rl.forEach((r, k) => runs.push({
+          text: r.text,
           options: {
-            fontFace: FONT, lang: 'ja-JP', fontSize: size, color, bold: bold || undefined,
-            lineSpacing: LS, breakLine: li < lines.length - 1 || undefined,
+            fontFace: FONT, lang: 'ja-JP', fontSize: size, color: r.color || color,
+            bold: (r.bold != null ? r.bold : bold) || undefined,
+            lineSpacing: LS, breakLine: (k === rl.length - 1 && li < lines.length - 1) || undefined,
           },
-        })),
+        }));
+      });
+      return {
+        text: runs,
         options: {
           fill: head ? { color: C.lightGray } : undefined,
           align: c.align || 'left', valign: 'middle',
@@ -272,66 +277,21 @@ function tightTable(s, rows, o) {
   s._reg('box', o.x, o.y, w, h, 'table');
   return { x: o.x, y: o.y, w, h: r3(h), rowH };
 }
-/**
- * 表の列幅: 各列の最長行に必要な幅（セルの左右余白込み）を確保し、残りを広げる列 grow に足す。
- * rows のセルは tightTable と同じ形（'\n' 区切り）。合計は TABLE_W。
- */
-function fitColW(rows, size, margin, grow) {
-  const mx = (margin[1] + margin[3]) / 72;
-  const need = rows[0].map((_, ci) => Math.max(...rows.map(r => {
-    const c = typeof r[ci] === 'string' ? { text: r[ci] } : r[ci];
-    return Math.max(...c.text.split('\n').map(l => measure(l, size)));
-  })) + mx);
-  const colW = need.map(v => Math.ceil(v * 1000) / 1000);
-  const rest = TABLE_W - colW.reduce((a, b) => a + b, 0);
-  if (rest < -1e-9) throw new Error(`表の列幅が ${r3(-rest)}in 足りません（必要 ${colW.join(' / ')}）`);
-  colW[grow] = r3(colW[grow] + rest);
-  return colW;
-}
-
-/**
- * S7 のカード本文（項目の箇条書き）。22pt では入らないため、カードの角丸の箱と見出し（22pt）はそのままに、
- * 本文だけを箱の内側に置いた枠なしの表（2 列: 記号「•」｜本文、1 項目 1 行）で size pt・行送り 1.2 em で組む。
- * 表はカードの箱に完全に含まれる（重なり判定の対象外）。
- */
-function listTable(s, items, o) {
-  const size = o.size, LS = size * 1.2, gapPt = o.itemGapPt;
-  const markW = o.markW, textW = r3(o.w - markW);
-  const rowH = [];
-  const none = [{ type: 'none' }, { type: 'none' }, { type: 'none' }, { type: 'none' }];
-  const out = items.map((lines, ii) => {
-    lines.forEach(l => {
-      const fi = fitInfo(runText(l), size, textW);
-      if (!fi.ok) throw new Error(`p${s.page} カード本文「${runText(l)}」が幅に収まりません（推定 ${fi.needIn}in > ${textW}in）`);
-    });
-    const padTop = ii === 0 ? 0 : gapPt;
-    rowH.push(r3(lines.length * LS / 72 + padTop / 72));
-    const opt = { fontFace: FONT, lang: 'ja-JP', fontSize: size, color: C.dark };
-    return [
-      { text: [{ text: '•', options: { ...opt, lineSpacing: LS } }], options: { ...opt, border: none, valign: 'top', margin: [padTop, 0, 0, 0] } },
-      {
-        text: lines.map((l, li) => ({ text: l, options: { ...opt, lineSpacing: LS, breakLine: li < lines.length - 1 || undefined } })),
-        options: { ...opt, border: none, valign: 'top', margin: [padTop, 0, 0, 0] },
-      },
-    ];
-  });
-  const h = r3(rowH.reduce((a, b) => a + b, 0));
-  s._bounds(`p${s.page} カード本文`, o.x, o.y, o.w, h);
-  s.raw.addTable(out, {
-    x: o.x, y: o.y, w: o.w, colW: [markW, textW], rowH, fontFace: FONT, fontSize: size, margin: 0,
-    border: none, valign: 'top',
-  });
-  s._reg('box', o.x, o.y, o.w, h, 'table(card)');
-  return { h, rowH };
+/** 表を置いて、本文ゾーンの下端を超えないことを確かめる（ログも出す） */
+function placeTable(s, id, rows, o) {
+  const t = tightTable(s, rows, { x: X0, y: TOP, ...o });
+  console.log(`  p${s.page} 表: 列幅 ${o.colW.join(' / ')}in、行高 ${t.rowH.join(' / ')}in、${TOP}〜${r3(t.y + t.h)}in`);
+  if (t.y + t.h > BOTTOM + 1e-6) throw new Error(`${id}: 表の下端 ${r3(t.y + t.h)} > ${BOTTOM}`);
+  return t;
 }
 
 // ---------------------------------------------------------------------------
-// 出典: spec の sources 行を 16pt・幅 11.6in の 2 行に収める（文献は落とさない。4-12 と同じ手順）
+// 出典: spec の sources 行を 16pt・幅 11.6in の 2 行に収める（文献は落とさない）
 //  0) ライブラリ既定（' / ' の区切りでだけ改行）で 2 行に入ればそのまま渡す。
 //  1) 文言はそのままで、文献の途中の語の切れ目でも改行する（区切り > 和文の語の切れ目・「et al.」の後 >
 //     読点の後・誌名と年の間 > その他の空白。数値と単位の間、「et」と「al.」の間では割らない）。
 //  2) 入らなければ区切りの前後の空白を詰める（' / ' → '/'）。
-//  3) それでも入らなければ（）内の補足を外す（外す数が最小の形。空白は詰めない形を優先）。
+//  3) それでも入らなければ（）内の補足を外す（外す数が最小の形）。
 //  実機メイリオの字幅（欧文は広い）でも 11.6in に入ることを確かめる。形を変えたものは DEVIATIONS に記録。
 // ---------------------------------------------------------------------------
 const SRC = LAYOUT.source;
@@ -378,7 +338,7 @@ function split2(str, sep) {
       if (str.startsWith(' / ', i) || str.startsWith(' / ', i - 2)) continue;   // 区切りの中
       a = str.slice(0, i); b = str.slice(i + 1);
       const pa = a[a.length - 1], nb = b[0];
-      if (isDigit(pa) && isCJK(nb)) continue;                                 // 数値と単位（2020 年、第 5 版）
+      if (isDigit(pa) && isCJK(nb)) continue;                                 // 数値と単位
       if (a.endsWith(' et') && b.startsWith('al.')) continue;
       if (isCJK(pa)) rank = 1;                                                // 和文の語の切れ目
       else if (a.endsWith('al.')) rank = 1;                                   // 著者（et al.）の後
@@ -401,11 +361,7 @@ function combos(arr, k, start = 0) {
   for (let i = start; i <= arr.length - k; i++) for (const rest of combos(arr, k - 1, i + 1)) out.push([arr[i], ...rest]);
   return out;
 }
-/**
- * shorten: [[元の（）, 短くした（）], ...]。（）を丸ごと外す前に、（）内の補足の一部だけを外す形を試す
- * （例: 「（SPAQI 神経疾患薬）」→「（SPAQI）」。文献を特定する語は残す）。
- */
-function sourcesOf(id, shorten = []) {
+function sourcesOf(id) {
   const spec = SPEC[id] && SPEC[id].sources;
   if (!spec) return undefined;
   const items0 = spec.split(' / ');
@@ -413,14 +369,18 @@ function sourcesOf(id, shorten = []) {
   if (lib && lib.length <= 2) return items0;
   const parens = [];
   items0.forEach((it, ii) => { for (const mm of it.matchAll(/（[^（）]*）/g)) parens.push({ ii, text: mm[0] }); });
-  const done = (best, extra) => {
+  const done = (best) => {
     const lines = best.r.b ? [best.r.a, best.r.b] : [best.r.a];
     const what = [];
     if (best.sep === '/') what.push('区切りの前後の空白を詰めた');
-    if (extra) what.push(extra);
     if (best.P && best.P.length) what.push(`（）内の補足 ${best.P.map(p => p.text).join('・')} を外した`);
     if (best.r.rank > 0) what.push('文献の途中の語の切れ目で改行');
-    DEVIATIONS.push(`${id} 出典: 「${spec}」→「${lines.join(' ⏎ ')}」（16pt・2 行に収めるため。${what.join('、')}）`);
+    // 改行位置だけの調整（文言そのまま）は deviations に入れない
+    if (best.sep === '/' || (best.P && best.P.length)) {
+      DEVIATIONS.push(`${id} 出典: 「${spec}」→「${lines.join(' ⏎ ')}」（16pt・2 行に収めるため。${what.join('、')}）`);
+    } else {
+      console.log(`  ${id} 出典: ${what.join('、')}`);
+    }
     return lines;
   };
   // 同じ段階では区切りの空白を残す形と詰める形を比べ、改行位置のよい方（同順位なら空白を残す方）をとる
@@ -434,17 +394,8 @@ function sourcesOf(id, shorten = []) {
     }
     return best;
   };
-  // 1) 文言そのまま
   let best = bestOf([{ items: items0, P: [] }]);
   if (best) return done(best);
-  // 2) （）内の補足の一部だけを外す
-  if (shorten.length) {
-    const items = items0.map(it => shorten.reduce((t, [a, b]) => t.replace(a, b), it));
-    if (items.join(' / ') === items0.join(' / ')) throw new Error(`${id}: shorten の（）が出典にありません`);
-    best = bestOf([{ items, P: [] }]);
-    if (best) return done(best, `（）内の補足の一部を外した（${shorten.map(([a, b]) => `${a}→${b}`).join('、')}）`);
-  }
-  // 3) （）内の補足を丸ごと外す（外す数が最小の形）
   for (let k = 1; k <= parens.length; k++) {
     best = bestOf(combos(parens, k).map(P => ({
       P,
@@ -459,6 +410,12 @@ function sourcesOf(id, shorten = []) {
   throw new Error(`${id}: 出典が 2 行に収まりません`);
 }
 
+// 表のセルの書式
+const drug = text => ({ text, bold: true });                       // 1 列目（薬）
+const keep = text => ({ text, bold: true, color: BLUE });          // 続ける・飲む
+const stop = text => ({ text, bold: true, color: VER });           // 止める・休薬
+const cell = lines => ({ text: lines });                           // 行の配列（mark() の run 可）
+
 async function main() {
   const deck = new Deck({
     file: OUT,
@@ -466,7 +423,7 @@ async function main() {
     author: 'Anes-lecture',
     deckTitle: '4-14 常用薬③：その他',
   });
-  const slide = (id, chapter, shorten) => deck.slide({ title: titleOf(id), chapter, notes: notesOf(id), sources: sourcesOf(id, shorten) });
+  const slide = (id, chapter) => deck.slide({ title: titleOf(id), chapter, notes: notesOf(id), sources: sourcesOf(id) });
 
   // ===== S1 表紙 =====
   {
@@ -476,9 +433,8 @@ async function main() {
   }
 
   // ===== S2 ACE 阻害薬・ARB の扱い（箇条書き6行 + 強調ボックス） =====
-  // 箇条書き 24pt・段落後 5pt、強調ボックスは 24pt 太字 2 行（行送り 1.2 em）。
-  // 箇条書きの枠は強調ボックスの 0.24in 上までとり、上下中央に置く（実機メイリオでは枠いっぱい、
-  // 行の低い代替フォントでも上下の空きが偏らない）。
+  // 箇条書き 24pt、強調ボックスは 24pt 太字 2 行（行送り 1.2 em）。箇条書きの枠は強調ボックスの 0.24in 上までとり、
+  // 上下中央に置く。
   {
     const id = 'S2';
     const s = slide(id, 0);
@@ -490,10 +446,10 @@ async function main() {
       mark(q(id, '術中低血圧は継続 54%・休薬 41%。SPACE：休薬で術後高血圧が多め'), ['SPACE：', BLUE]),
       mark(q(id, '配合錠（ARB＋Ca 拮抗薬、ARNI）の中身を見落とさない'), ['中身を見落とさない', VER]),
     ];
-    const BUL = { y: TOP, size: 24, gap: 5 };
     const em = brk(id, 'どちらでもよいが、続けるなら導入時の低血圧に備える。止めたら再開日を書く', '止めたら');
     const e = emphTight(s, { x: X0, w: BW, yBottom: BOTTOM, lineColor: TEAL, size: 24,
       lines: [em[0], mark(em[1], ['止めたら再開日を書く', VER])] });
+    const BUL = { y: TOP, size: 24, gap: 6 };
     const need = heightFor(items.length, BUL.size, BUL.gap);
     const bh = r3(e.y - GAP - BUL.y);
     if (need > bh + 1e-9) throw new Error(`${id}: 箇条書きの高さ ${need} > ${bh}`);
@@ -502,40 +458,35 @@ async function main() {
   }
 
   // ===== S3 ほかの降圧薬とスタチン（表 3列 × 5行＋見出し行） =====
-  // spec の列幅（2.8 / 3.6 / 5.8）では 3 列目が 4 行に折れ、表の高さが約 5.6in で本文ゾーン（4.62in）に入らない。
-  // 22pt のまま入れるには行 4 の理由「急な中止でリバウンド高血圧。新規開始は無益（3）」を 1 行にする必要があり、
-  // 3 列目は 8.17in 以上になる。1 列目は「クロニジン」の幅、残りを 2 列目にとる（合計 12.2in）。
-  // セルの左右余白を 6pt → 4pt にして 2 列目を全角 6 字幅にし、「当日は休薬が／一般的」と文節で割る
-  // （「続ける（I）。」は 6.6 字幅で入らないので「続ける／（I）。／当日朝も」のまま。行 5 は 3 列目も 3 行）。
+  // spec の列幅（2.8 / 3.6 / 5.8）では 3 列目が 4 行に折れ、表の高さが約 5.6in で本文ゾーン（1.85〜6.44in、4.59in）に
+  // 入らない。22pt のまま入れるには行 4 の理由「急な中止でリバウンド高血圧。新規開始は無益（3）」を 1 行にする必要が
+  // あり、3 列目は余白込み 8.17in 以上になる。セルの左右余白が 6pt だと 1 列目（クロニジン）と 2 列目（当日は休薬が）の
+  // 必要幅と合わせて 12.2in を超えるので、この表だけ左右余白を 4pt にする（上下 3pt は同じ。deviations に記載）。
   {
     const id = 'S3';
     const s = slide(id, 0);
-    const drug = text => ({ text, bold: true });
-    const keep = text => ({ text, bold: true, color: BLUE });
-    const stop = text => ({ text, bold: true, color: VER });
-    const j = a => a.join('\n');
     const rows = [
       [q(id, '薬'), q(id, '当日'), q(id, '理由')],
       [drug(q(id, 'β遮断薬')), keep(q(id, '続ける（I）')),
-        j(brk(id, '周術期の中止で 30 日死亡のオッズ比 3.93（観察研究）。当日の新規開始は害（POISE）。始めるなら 7 日以上前', '（観察研究）', '始めるなら'))],
+        cell(brk(id, '周術期の中止で 30 日死亡のオッズ比 3.93（観察研究）。当日の新規開始は害（POISE）。始めるなら 7 日以上前', '（観察研究）', '始めるなら'))],
       [drug(q(id, 'Ca 拮抗薬')), keep(q(id, '続ける')), q(id, '中止の利益はない')],
-      [drug(q(id, '利尿薬')), stop(j(brk(id, '当日は休薬が一般的', '一般的'))), j(brk(id, '脱水・低血圧・腎機能。溢水のある心不全では続ける', '溢水'))],
+      [drug(q(id, '利尿薬')), stop(brk(id, '当日は休薬が一般的', '一般的')), cell(brk(id, '脱水・低血圧・腎機能。溢水のある心不全では続ける', '溢水'))],
       [drug(q(id, 'クロニジン')), keep(q(id, '続ける')), q(id, '急な中止でリバウンド高血圧。新規開始は無益（3）')],
-      [drug(q(id, 'スタチン')), keep(j(brk(id, '続ける（I）。当日朝も', '（I）', '当日朝も'))),
-        j(brk(id, '術後 4 日超の中断で心筋壊死のオッズ比 2.9（大動脈手術）。ASCVD または 10 年リスクで適応があれば開始（I）', 'オッズ比', 'ASCVD'))],
+      [drug(q(id, 'スタチン')), keep(brk(id, '続ける（I）。当日朝も', '（I）', '当日朝も')),
+        cell(brk(id, '術後 4 日超の中断で心筋壊死のオッズ比 2.9（大動脈手術）。ASCVD または 10 年リスクで適応があれば開始（I）', 'オッズ比', 'ASCVD'))],
     ];
     const m = [3, 4, 3, 4];
-    const colW = fitColW(rows, 22, m, 1);
-    const t = tightTable(s, rows, { x: X0, y: TOP_T, colW, margin: m });
-    console.log(`  p${s.page} 表: 列幅 ${colW.join(' / ')}in、行高 ${t.rowH.join(' / ')}in、下端 ${r3(t.y + t.h)}in`);
-    if (t.y + t.h > BOTTOM + 0.011) throw new Error(`${id}: 表の下端 ${r3(t.y + t.h)} > ${BOTTOM}`);
+    const colW = [1.85, 2.18, 8.17];
+    placeTable(s, id, rows, { colW, margin: m });
+    DEVIATIONS.push(`${id} 表: 列幅を spec の 2.8 / 3.6 / 5.8in から ${colW.join(' / ')}in に、セルの左右余白を 6pt から 4pt にした` +
+      '（文言・22pt はそのまま）。spec の列幅と余白 [3,6,3,6]pt では 3 列目が 4 行に折れて表の高さが約 5.6in になり、' +
+      '本文ゾーン（4.59in）に入らない。行 4 の理由を 1 行にする 3 列目の幅（8.17in）をとると、余白 6pt では 1・2 列目の必要幅と合わせて 12.2in を超える');
   }
 
   // ===== S4 ステロイドカバー（2列カード + 強調ボックス） =====
   // カード本文 22pt・行送り 1.2 em。右のカードの 3 項目めは文の切れ目（「持続。」の後）で割り、2 行目
   // 「食べられたら通常量の 2 倍を 48 時間経口で」が入る幅を右のカードに残す。左のカードは
   // 「過去 6 か月に経口 2 週超・」が 1 行に入る幅にし、「長期の高用量 ICS（GINA）」を 2 行目にまとめる。
-  // 最終行と箱の下端の間は CARD.padB（0.15in）あける。
   {
     const id = 'S4';
     const s = slide(id, 1);
@@ -562,182 +513,161 @@ async function main() {
     const w1 = Math.ceil(cardNeedW(c1) * 1000 + 1) / 1000;   // 推定幅 + 0.001in（丸めで幅不足にしない）
     const w2 = r3(BW - GAP - w1);
     if (cardNeedW(c2) > w2 + 1e-9) throw new Error(`${id}: 右のカードの幅不足（必要 ${r3(cardNeedW(c2))} > ${w2}）`);
-    const y = TOP_T, h = r3(e.y - GAP - y);
-    drawCard(s, c1, X0, y, w1, h, itemGapFor(c1, h, 0.2));
-    drawCard(s, c2, X0 + w1 + GAP, y, w2, h, itemGapFor(c2, h, 0.2));
-    console.log(`  p${s.page} カード: 幅 ${w1} / ${w2}in、高さ ${h}in、項目間 ${itemGapFor(c1, h, 0.2)} / ${itemGapFor(c2, h, 0.2)}in`);
+    const y = TOP, h = r3(e.y - GAP - y);
+    const g1 = itemGapFor(c1, h, 0.2), g2 = itemGapFor(c2, h, 0.2);
+    drawCard(s, c1, X0, y, w1, h, g1);
+    drawCard(s, c2, X0 + w1 + GAP, y, w2, h, g2);
+    console.log(`  p${s.page} カード: 幅 ${w1} / ${w2}in、${y}〜${r3(y + h)}in、項目間 ${g1} / ${g2}in、強調ボックス ${e.y}〜${r3(e.y + e.h)}in`);
   }
 
-  // ===== S5 神経・精神の薬（表 3列 × 6行＋見出し行） =====
-  // 22pt では tightTable・列幅の見直しをしても高さ約 8.3in で本文ゾーン（1.82〜6.44in、4.62in）に入らない。
-  // 薬剤名（併用禁忌の薬の並び、セロトニン症候群を起こす薬）を落とさずに短くする方法もないので、
-  // 文言は変えずに表だけ 16pt にする（deviations に記載）。表は最少でも 15 行分あり、17pt ではセルの上下余白が
-  // 2pt 未満になる（罫線に文字が接して見える）うえ、列幅が足りず「SSRI・SNRI・三環系」が列挙の途中で折れる。
-  // 16pt なら上下余白 3pt（0.04in）を取り、列幅を spec（3.0 / 3.2 / 6.0）の近く（2.79 / 3.41 / 6.0）にでき、
-  // 改行もすべて文・語句の切れ目になる。2 列目は「大量出血・絶食が続く手術は」が 1 行に入る幅。
+  // ===== S5 神経・精神の薬①（表 3列 × 3行＋見出し行） =====
+  // spec の列幅（3.0 / 3.2 / 6.0）では 1 列目に「（パーキンソン病）」が入らず、3 列目は MAO-B 阻害薬の行が 5 行、
+  // レボドパの行が 4 行に折れて表の高さが約 4.7in になり本文ゾーン（4.59in）に入らない。
+  // 1 列目は「（パーキンソン病）」が 1 行に入る幅、2 列目は「少量の水で／続ける」の幅、残りを 3 列目にとり、
+  // 3 列目に「ペチジン・トラマドール・タペンタドール、」「メトクロプラミド・ハロペリドールを避ける」が 1 行に入るようにする。
   {
     const id = 'S5';
     const s = slide(id, 2);
-    const TS = 16;
-    const drug = text => ({ text, bold: true });
-    const keep = text => ({ text, bold: true, color: BLUE });
-    const j = a => a.join('\n');
     const rows = [
       [q(id, '薬'), q(id, '当日'), q(id, '注意')],
       [drug(q(id, '抗てんかん薬')), keep(q(id, '続ける')),
-        j(brk(id, '絶食が長引けば静注製剤に。バルプロ酸とカルバペネムは併用禁忌', 'バルプロ酸'))],
-      [drug(j(brk(id, 'レボドパ（パーキンソン病）', '（'))), keep(q(id, '少量の水で続ける')),
-        j(brk(id, '急な中止で悪性症候群。絶食ならレボドパ静注。メトクロプラミド・ハロペリドールを避ける', 'メトクロプラミド'))],
-      [drug(j(brk(id, 'MAO-B 阻害薬（セレギリン）', '（'))), keep(q(id, '続ける')),
-        j(brk(id, 'ペチジン・トラマドール・タペンタドール、三環系・SSRI・SNRI・ミルタザピンは併用禁忌。エフェドリンを避けフェニレフリン少量', '三環系', 'エフェドリン'))],
-      [drug(q(id, 'SSRI・SNRI・三環系')), keep(q(id, '続ける')),
-        j(brk(id, '出血が増える。セロトニン症候群（トラマドール、ペチジン、メチレンブルー、リネゾリド）', 'ペチジン'))],
-      [drug(q(id, 'リチウム')), j(brk(id, '小手術は継続。大量出血・絶食が続く手術は 72 時間前に中止', '大量出血', '72 時間')),
-        j(brk(id, '脱水・NSAIDs・ACE 阻害薬・サイアザイドで蓄積。再開は K・Na・Cr を見て', '再開は'))],
-      [drug(q(id, '抗精神病薬')), keep(q(id, '続ける（精神科と）')),
-        j(brk(id, 'QT 延長、錐体外路、悪性症候群。パーキンソン病にハロペリドールは禁忌', 'パーキンソン'))],
+        cell((l => [l[0], mark(l[1], ['併用禁忌', RED])])(brk(id, '絶食が長引けば静注製剤に。バルプロ酸とカルバペネムは併用禁忌', 'バルプロ酸')))],
+      [drug(brk(id, 'レボドパ（パーキンソン病）', '（')), keep(brk(id, '少量の水で続ける', '続ける')),
+        cell((l => [mark(l[0], ['悪性症候群', RED]), l[1], l[2]])(brk(id, '急な中止で悪性症候群。絶食ならレボドパ静注。メトクロプラミド・ハロペリドールを避ける', '絶食なら', 'メトクロプラミド')))],
+      [drug(brk(id, 'MAO-B 阻害薬（セレギリン）', '（')), keep(q(id, '続ける')),
+        cell((l => [l[0], l[1], mark(l[2], ['併用禁忌', RED]), l[3]])(brk(id, 'ペチジン・トラマドール・タペンタドール、三環系・SSRI・SNRI・ミルタザピンは併用禁忌。エフェドリンを避けフェニレフリン少量', '三環系', 'ミルタザピン', 'エフェドリン')))],
     ];
-    const m = [3, 6, 3, 6];
-    const colW = [2.79, 3.41, 6.0];
-    const t = tightTable(s, rows, { x: X0, y: TOP_T, colW, margin: m, size: TS });
-    console.log(`  p${s.page} 表: 列幅 ${colW.join(' / ')}in、行高 ${t.rowH.join(' / ')}in、下端 ${r3(t.y + t.h)}in`);
-    if (t.y + t.h > BOTTOM + 0.011) throw new Error(`${id}: 表の下端 ${r3(t.y + t.h)} > ${BOTTOM}`);
-    DEVIATIONS.push(`${id} 文字の大きさ: 表（見出し行＋6 行）を 22pt ではなく ${TS}pt で組んだ（spec の文言は一字も変えていない。` +
-      'セルの余白は tightTable と同じ [3,6,3,6]pt）。22pt では tightTable（行間 1.2 em）と列幅の見直し（合計 12.2in）を' +
-      'しても表の高さが約 8.3in（20pt でも約 6.9in、18pt でも約 5.1in、17pt でも余白 3pt なら約 4.8in）で、' +
-      '本文ゾーン（1.82〜6.44in、4.62in）に入らない。3 列目は併用禁忌・セロトニン症候群の薬剤名の並びが大半で、' +
-      '薬剤名を落とさずに短くする余地がない。spec 側で S5 を 2 枚に分けるか、表の内容を減らす必要がある');
-    DEVIATIONS.push(`${id} 列幅: spec の 3.0 / 3.2 / 6.0in に対して ${colW.join(' / ')}in（2 列目は「大量出血・絶食が続く手術は」が` +
-      ' 1 行に入る幅。1 列目は「SSRI・SNRI・三環系」が 1 行に入る幅）');
+    const colW = [3.25, 1.88, 7.07];
+    placeTable(s, id, rows, { colW });
+    DEVIATIONS.push(`${id} 表: 列幅を spec の 3.0 / 3.2 / 6.0in から ${colW.join(' / ')}in にした（文言・22pt・余白 [3,6,3,6]pt はそのまま）。` +
+      'spec の列幅では 1 列目に「（パーキンソン病）」が入らず、3 列目が 4〜5 行に折れて表が本文ゾーン（4.59in）に入らない');
   }
 
-  // ===== S6 ホルモン・漢方・サプリ（表 3列 × 6行＋見出し行） =====
-  // 22pt では列幅を見直しても高さ約 6.8in で入らない。文言は変えずに表だけ 18pt にする（deviations に記載。
-  // 19pt 以上ではセルの上下余白 3pt を取ると入らない）。列幅は spec（3.4 / 4.0 / 4.8）の近く: 2 列目は spec どおり
-  // 4.0in で「サプリは 1〜2 週前に中止。／甘草は K を確認」を 2 行に、3 列目は「セント・ジョーンズ・ワートは薬物代謝」が
-  // 1 行に入る 5.21in（4.8in では漢方・サプリの行が 4 行になり表が入らない）、1 列目は残り（「漢方（甘草）・サプリ」が 1 行）。
-  // 改行は文・語句の切れ目に置く。
-  // 出典: spec の sources は 2 行に入らない。（）内の薬剤名の並びを外し「（PMDA）」は残す（deviations に記載）。
+  // ===== S6 神経・精神の薬②（表 3列 × 3行＋見出し行） =====
+  // spec の列幅（3.0 / 3.2 / 6.0）では 2 列目の「絶食が続く手術は」、3 列目の「パーキンソン病にハロペリドールは禁忌」が
+  // 1 行に入らず（語の途中で折れる）、表が本文ゾーンに入らない。2 列目は「絶食が続く手術は」、3 列目は
+  // 「パーキンソン病にハロペリドールは禁忌」が 1 行に入る幅にし、残りを 1 列目にとる（spec の値に近い）。
   {
     const id = 'S6';
-    const s = slide(id, 3, [['（PMDA：エチニルエストラジオール含有製剤、ラロキシフェン、芍薬甘草湯）', '（PMDA）']]);
-    const TS = 18;
-    const drug = text => ({ text, bold: true });
-    const keep = text => ({ text, bold: true, color: BLUE });
-    const stop = text => ({ text, bold: true, color: VER });
-    const j = a => a.join('\n');
+    const s = slide(id, 2);
     const rows = [
-      [q(id, '薬'), q(id, 'どうする'), q(id, '理由')],
-      [drug(q(id, 'レボチロキシン')), j(brk(id, '当日飲めなくてもよい。5 日超は静注', '5 日超')),
-        j(brk(id, '半減期約 7 日。顕性の機能異常は待機手術を延期', '顕性'))],
-      [drug(q(id, '抗甲状腺薬')), keep(q(id, '続ける')), q(id, '甲状腺クリーゼの予防')],
-      [drug(q(id, '低用量ピル・LEP')), stop(j(brk(id, '手術 4 週前に中止、術後 2 週は再開しない', '術後'))),
-        j(brk(id, '添付文書で禁忌（静脈血栓塞栓症）。予約時に確認', '予約時'))],
-      [drug(q(id, 'ラロキシフェン')), stop(q(id, '不動になる 3 日前に中止')),
-        j(brk(id, '静脈血栓塞栓症。骨折の緊急手術では VTE 予防を強化', '骨折'))],
-      [drug(q(id, '漢方（甘草）・サプリ')), j(brk(id, 'サプリは 1〜2 週前に中止。甘草は K を確認', '甘草は')),
-        j(brk(id, '偽アルドステロン症。ニンニク・イチョウは出血、セント・ジョーンズ・ワートは薬物代謝', 'ニンニク', 'セント'))],
-      [drug(j(brk(id, '吸入薬・ロイコトリエン拮抗薬', 'ロイコ'))), keep(q(id, '当日も続ける')), q(id, '吸入ステロイドはカバーの判断で数える')],
+      [q(id, '薬'), q(id, '当日'), q(id, '注意')],
+      [drug(brk(id, 'SSRI・SNRI・三環系', '三環系')), keep(q(id, '続ける')),
+        cell(brk(id, '出血が増える。セロトニン症候群（トラマドール、ペチジン、メチレンブルー、リネゾリド）', '（トラマドール', 'メチレンブルー'))],
+      [drug(q(id, 'リチウム')), cell((l => [l[0], stop([l[1]]).text[0], stop([l[2]]).text[0], mark(l[3], ['72 時間前に中止', VER])])(brk(id, '小手術は継続。大量出血・絶食が続く手術は 72 時間前に中止', '大量出血', '絶食が', '72 時間'))),
+        cell(brk(id, '脱水・NSAIDs・ACE 阻害薬・サイアザイドで蓄積。再開は K・Na・Cr を見て', 'サイアザイド', '再開は'))],
+      [drug(q(id, '抗精神病薬')), keep(brk(id, '続ける（精神科と）', '（精神科と）')),
+        cell((l => [l[0], mark(l[1], ['禁忌', RED])])(brk(id, 'QT 延長、錐体外路、悪性症候群。パーキンソン病にハロペリドールは禁忌', 'パーキンソン病')))],
     ];
-    const m = [3, 6, 3, 6];
-    const colW = [2.99, 4.0, 5.21];
-    const t = tightTable(s, rows, { x: X0, y: TOP_T, colW, margin: m, size: TS });
-    console.log(`  p${s.page} 表: 列幅 ${colW.join(' / ')}in、行高 ${t.rowH.join(' / ')}in、下端 ${r3(t.y + t.h)}in`);
-    if (t.y + t.h > BOTTOM + 0.011) throw new Error(`${id}: 表の下端 ${r3(t.y + t.h)} > ${BOTTOM}`);
-    DEVIATIONS.push(`${id} 文字の大きさ: 表（見出し行＋6 行）を 22pt ではなく ${TS}pt で組んだ（spec の文言は一字も変えていない）。` +
-      '22pt では tightTable（行間 1.2 em・余白 [3,6,3,6]pt）と列幅の見直し（合計 12.2in）をしても表の高さが約 6.8in' +
-      '（20pt でも約 5.3in）で、本文ゾーン（1.82〜6.44in、4.62in）に入らない。薬剤名・期間（4 週・2 週・3 日・1〜2 週・5 日）を' +
-      '落とさずに短くしても入らない。spec 側で S6 を 2 枚に分けるか、表の内容を減らす必要がある');
-    DEVIATIONS.push(`${id} 列幅: spec の 3.4 / 4.0 / 4.8in に対して ${colW.join(' / ')}in（4.8in では 3 列目の` +
-      '「セント・ジョーンズ・ワートは薬物代謝」が入らず、漢方・サプリの行が 4 行になって表が本文ゾーンに入らない）');
+    const colW = [2.96, 2.91, 6.33];
+    placeTable(s, id, rows, { colW });
+    DEVIATIONS.push(`${id} 表: 列幅を spec の 3.0 / 3.2 / 6.0in から ${colW.join(' / ')}in にした（文言・22pt・余白 [3,6,3,6]pt はそのまま）。` +
+      'spec の列幅では 3 列目の「パーキンソン病にハロペリドールは禁忌」が語の途中で折れ、表が本文ゾーンに入らない');
   }
 
-  // ===== S7 当日の内服指示の書き方（3列カード + 強調ボックス） =====
-  // カード本文 14 項目（22pt で各カード 9〜11 行）が 22pt では強調ボックスと合わせて本文ゾーンに入らない
-  // （22pt・行送り 1.2 em で約 5.7in > 4.62in。19pt・20pt でも最も行の多いカードが 10 行以上になり入らない）。
-  // 見出し（22pt）はそのままに、カード本文だけを 18pt にする（箱の内側に置いた枠なしの表。deviations に記載）。
-  // 最も行の多い「当日も飲む」（9 行）の最終行を箱の下端から離し（下余白 0.15in）、カードと強調ボックスの間を
-  // 0.24in より広く（0.28in）とるため、強調ボックスは 22pt 太字 2 行にする（22pt 以上の範囲で 1 段小さく）。
-  // カード見出しの色: 青 = 飲む・続ける、バーミリオン = 止める（S3・S5・S6 の表と同じ）。「相談する相手」は
-  // 飲む・止めるのどちらでもないので黒のまま。
-  // 出典: spec の sources は 2 行に入らない。2 つ目の SPAQI の（）内の「神経疾患薬」だけを外す（deviations に記載）。
+  // ===== S7 甲状腺薬と女性ホルモン（表 3列 × 4行＋見出し行） =====
+  // spec の列幅（3.4 / 4.0 / 4.8）のまま、語句の切れ目で改行して入る。
   {
     const id = 'S7';
-    const s = slide(id, 3, [['（SPAQI 神経疾患薬）', '（SPAQI）']]);
-    const BS = 18;
-    const GAP7 = 0.28;
-    const em = brk(id, '『飲む薬』『止める薬と再開日』『相談した相手』を薬ごとに書き、少量の水で飲ませる', '少量の水');
-    const e = emphTight(s, { x: X0, w: BW, yBottom: BOTTOM, lineColor: TEAL, size: 22,
-      lines: [mark(em[0], ['『止める薬と再開日』', VER]), em[1]] });
-    const cards = [
-      {
-        title: q(id, '当日も飲む'), titleColor: BLUE,
-        items: [
-          brk(id, 'β遮断薬、Ca 拮抗薬、スタチン', 'スタチン'),
-          brk(id, '吸入薬、抗てんかん薬、レボドパ', 'レボドパ'),
-          brk(id, 'SSRI、抗甲状腺薬、レボチロキシン（飲めなくても可）', 'レボチロキシン', '（飲めなくても可）'),
-          brk(id, '普段のステロイド（＋カバー）', '（＋カバー）'),
-        ],
-      },
-      {
-        title: q(id, '止める（いつから）'), titleColor: VER,
-        items: [
-          brk(id, 'ACE 阻害薬・ARB：24 時間前から（HFrEF は相談）', '24 時間'),
-          [q(id, '利尿薬：当日朝')],
-          [q(id, 'SGLT2 阻害薬：3 日前（→ 4-13）')],
-          brk(id, 'リチウム：大量出血の手術は 72 時間前', '大量出血'),
-          brk(id, '低用量ピル：4 週前。サプリ：1〜2 週前', 'サプリ'),
-        ],
-      },
-      {
-        title: q(id, '相談する相手'), titleColor: C.dark,
-        items: [
-          brk(id, 'HFrEF・不整脈の薬：循環器内科', '循環器'),
-          [q(id, '副腎不全：内分泌内科')],
-          brk(id, 'パーキンソン病：脳神経内科', '脳神経'),
-          brk(id, 'リチウム・MAO 阻害薬・抗精神病薬：精神科', '抗精神病薬'),
-          [q(id, 'てんかん・漢方：処方医')],
-        ],
-      },
+    const s = slide(id, 3);
+    const rows = [
+      [q(id, '薬'), q(id, 'どうする'), q(id, '理由')],
+      [drug(q(id, 'レボチロキシン')), cell(brk(id, '当日飲めなくてもよい。5 日超は静注', '5 日超')),
+        cell(brk(id, '半減期約 7 日。顕性の機能異常は待機手術を延期', '顕性', '待機手術'))],
+      [drug(q(id, '抗甲状腺薬')), keep(q(id, '続ける')), q(id, '甲状腺クリーゼの予防')],
+      [drug(q(id, '低用量ピル・LEP')), stop(brk(id, '手術 4 週前に中止、術後 2 週は再開しない', '術後')),
+        cell((l => [mark(l[0], ['禁忌', RED]), l[1], l[2]])(brk(id, '添付文書で禁忌（静脈血栓塞栓症）。予約時に確認', '（静脈', '予約時')))],
+      [drug(q(id, 'ラロキシフェン')), stop(q(id, '不動になる 3 日前に中止')),
+        cell(brk(id, '静脈血栓塞栓症。骨折の緊急手術では VTE 予防を強化', '骨折', 'VTE'))],
     ];
-    const K = { padX: 0.08, padY: 0.08, padB: 0.15, titleSize: 22, titleGap: 0.06, markW: 0.22 };
-    const bodyLS = BS * 1.2 / 72;
-    // 幅: 見出し（22pt）と本文の最長行に必要な幅を確保し、余りを等分
-    const need = cards.map(c => Math.max(measure(runText(c.title), K.titleSize),
-      Math.max(...c.items.flat().map(l => measure(runText(l), BS))) + K.markW) + 2 * K.padX);
-    const extra = BW - 2 * GAP - need.reduce((a, b) => a + b, 0);
-    if (extra < -1e-9) throw new Error(`${id}: カード幅が ${r3(-extra)}in 足りません`);
-    const ws = need.map(v => Math.floor((v + extra / cards.length) * 1000) / 1000);
-    const y = TOP_T, h = r3(e.y - GAP7 - y);
-    // 項目の間隔: カードごとに余りを項目間に配る（上限 8pt）
-    const bodyH = h - K.padY - K.padB - lineIn(K.titleSize) - K.titleGap;
-    const gapPts = cards.map(c => {
-      const nl = c.items.reduce((a, it) => a + it.length, 0);
-      const g = Math.floor((bodyH - nl * bodyLS) / (c.items.length - 1) * 72 * 10) / 10;
-      if (g < 0) throw new Error(`${id}: カード「${c.title}」の高さが足りません（本文 ${nl} 行）`);
-      return Math.min(8, g);
-    });
-    let x = X0;
-    cards.forEach((c, k) => {
-      s.box({ x: r3(x), y, w: ws[k], h, fill: C.bg, radius: 0.08 });
-      tightText(s, [c.title], { x: x + K.padX, y: y + K.padY, w: ws[k] - 2 * K.padX, size: K.titleSize, bold: true, color: c.titleColor });
-      const by = r3(y + K.padY + lineIn(K.titleSize) + K.titleGap);
-      const lt = listTable(s, c.items, { x: r3(x + K.padX), y: by, w: r3(ws[k] - 2 * K.padX), size: BS, itemGapPt: gapPts[k], markW: K.markW });
-      if (by + lt.h > y + h - K.padB + 1e-6) throw new Error(`${id}: カード「${c.title}」の本文の下端 ${r3(by + lt.h)} > ${r3(y + h - K.padB)}`);
-      x += ws[k] + GAP;
-    });
-    console.log(`  p${s.page} カード: 幅 ${ws.join(' / ')}in（必要 ${need.map(r3).join(' / ')}）、高さ ${h}in（${y}〜${r3(y + h)}）、` +
-      `強調ボックス ${e.y}〜${r3(e.y + e.h)}in（間 ${r3(e.y - y - h)}in）、項目間 ${gapPts.join(' / ')}pt`);
-    DEVIATIONS.push(`${id} 文字の大きさ: 3 列カードの本文（14 項目）を 22pt ではなく ${BS}pt で組んだ（見出し 22pt・強調ボックス 22pt、` +
-      'spec の文言は一字も変えていない）。22pt では行送り 1.2 em・列幅の最適化をしても各カード 9〜11 行になり、' +
-      '強調ボックスと合わせて約 5.7in（20pt でも約 5.0in、19pt でも最も行の多いカードが 10 行以上）で本文ゾーン（4.62in）に入らない。項目の大半が薬剤名と期間で、' +
-      '落とさずに短くする余地がない。本文はカードの箱の内側に置いた枠なしの表（記号｜本文の 2 列）で組んだ。' +
-      'spec 側で S7 の項目を減らす必要がある');
+    placeTable(s, id, rows, { colW: [3.4, 4.0, 4.8] });
   }
 
-  // ===== S8 まとめ（箇条書き5行） =====
+  // ===== S8 漢方・サプリ・吸入薬（表 3列 × 3行＋見出し行） =====
+  // spec の列幅（3.4 / 4.0 / 4.8）では 3 列目の「セント・ジョーンズ・ワートは」が入らず薬剤名の途中で折れ、
+  // 1 列目の「ロイコトリエン拮抗薬」も入らない。1 列目は「ロイコトリエン拮抗薬」、3 列目は「セント・ジョーンズ・ワートは」が
+  // 1 行に入る幅にし、残りを 2 列目にとる。
   {
     const id = 'S8';
+    const s = slide(id, 3);
+    const rows = [
+      [q(id, '薬'), q(id, 'どうする'), q(id, '理由')],
+      [drug(q(id, '漢方（甘草・麻黄）')), cell(brk(id, '一律に止めない。麻黄は中止を考え、甘草は K を確認', '麻黄は', '甘草は')),
+        cell(brk(id, '甘草は偽アルドステロン症（低 K）。麻黄はエフェドリン', '（低 K）'))],
+      [drug(q(id, 'サプリ・ハーブ')), stop(brk(id, '1〜2 週前に中止。具体的に尋ねる', '具体的に')),
+        cell(brk(id, 'ニンニク・イチョウは出血、セント・ジョーンズ・ワートは薬物代謝', 'セント', '薬物代謝'))],
+      [drug(brk(id, '吸入薬・ロイコトリエン拮抗薬', 'ロイコ')), keep(brk(id, '当日も続ける。吸入器を持参', '吸入器')),
+        cell(brk(id, '吸入ステロイドはカバーの判断で数える', 'カバー'))],
+    ];
+    const colW = [3.6, 3.64, 4.96];
+    placeTable(s, id, rows, { colW });
+    DEVIATIONS.push(`${id} 表: 列幅を spec の 3.4 / 4.0 / 4.8in から ${colW.join(' / ')}in にした（文言・22pt・余白 [3,6,3,6]pt はそのまま）。` +
+      'spec の列幅では「セント・ジョーンズ・ワート」「ロイコトリエン拮抗薬」が薬剤名の途中で折れる');
+  }
+
+  // ===== S9 当日の内服指示（2列カード + 強調ボックス） =====
+  // カード本文 22pt・行送り 1.2 em。右のカード（止める）は「低用量ピル：4 週前。サプリ：1〜2 週前」が 1 行に入る幅、
+  // 左のカード（飲む）は残り（「β遮断薬、Ca 拮抗薬、スタチン」が 1 行に入る）。強調ボックスは 24pt 太字 1 行。
+  {
+    const id = 'S9';
+    const s = slide(id, 3);
+    const e = emphTight(s, { x: X0, w: BW, yBottom: BOTTOM, lineColor: TEAL, size: 24, minH: 0.62,
+      lines: [mark(q(id, '飲む薬・止める薬と再開日を薬ごとに書き、少量の水で飲ませる'), ['止める薬と再開日', VER])] });
+    const c1 = {
+      title: q(id, '当日も飲む'), titleColor: BLUE,
+      items: [
+        [q(id, 'β遮断薬、Ca 拮抗薬、スタチン')],
+        brk(id, '吸入薬、抗てんかん薬、レボドパ', 'レボドパ'),
+        brk(id, 'SSRI、抗甲状腺薬、レボチロキシン（飲めなくても可）', 'レボチロキシン', '（飲めなくても可）'),
+        [q(id, '普段のステロイド（＋カバー）')],
+      ],
+    };
+    const c2 = {
+      title: q(id, '止める（いつから）'), titleColor: VER,
+      items: [
+        brk(id, 'ACE 阻害薬・ARB：24 時間前から（HFrEF は相談）', '24 時間'),
+        [q(id, '利尿薬：当日朝')],
+        [q(id, 'SGLT2 阻害薬：3 日前（→ 4-13）')],
+        [q(id, 'リチウム：大量出血の手術は 72 時間前')],
+        [q(id, '低用量ピル：4 週前。サプリ：1〜2 週前')],
+      ],
+    };
+    const w2 = Math.ceil(cardNeedW(c2) * 1000 + 1) / 1000;
+    const w1 = r3(BW - GAP - w2);
+    if (cardNeedW(c1) > w1 + 1e-9) throw new Error(`${id}: 左のカードの幅不足（必要 ${r3(cardNeedW(c1))} > ${w1}）`);
+    const y = TOP, h = r3(e.y - GAP - y);
+    const g1 = itemGapFor(c1, h, 0.22), g2 = itemGapFor(c2, h, 0.22);
+    drawCard(s, c1, X0, y, w1, h, g1);
+    drawCard(s, c2, X0 + w1 + GAP, y, w2, h, g2);
+    console.log(`  p${s.page} カード: 幅 ${w1} / ${w2}in、${y}〜${r3(y + h)}in、項目間 ${g1} / ${g2}in、強調ボックス ${e.y}〜${r3(e.y + e.h)}in`);
+  }
+
+  // ===== S10 相談する相手と記録（箇条書き5行 + 強調ボックス） =====
+  // 箇条書き 24pt。相談先（：の後）を青太字にする。強調ボックスは 24pt 太字 1 行。
+  {
+    const id = 'S10';
+    const s = slide(id, 3);
+    const dept = (str, d) => mark(q(id, str), [d, BLUE]);
+    const items = [
+      dept('HFrEF・不整脈の薬：循環器内科', '循環器内科'),
+      dept('副腎不全の疑い、ステロイドカバー：内分泌内科', '内分泌内科'),
+      dept('パーキンソン病：脳神経内科', '脳神経内科'),
+      dept('リチウム・MAO 阻害薬・抗精神病薬：精神科', '精神科'),
+      dept('てんかん・漢方：処方医', '処方医'),
+    ];
+    const e = emphTight(s, { x: X0, w: BW, yBottom: BOTTOM, lineColor: RED, size: 24, minH: 0.62,
+      lines: [mark(q(id, '自己判断で中止しない。相談した相手と事実を記録する'), ['自己判断で中止しない。', RED])] });
+    const BUL = { y: TOP, size: 24, gap: 18 };
+    const need = heightFor(items.length, BUL.size, BUL.gap);
+    const bh = r3(e.y - GAP - BUL.y);
+    if (need > bh + 1e-9) throw new Error(`${id}: 箇条書きの高さ ${need} > ${bh}`);
+    s.bullets(items, { ...BUL, h: bh, valign: 'middle' });
+    console.log(`  p${s.page} 箇条書き枠 ${BUL.y}〜${r3(BUL.y + bh)}in（必要 ${need}in、上下中央）、強調ボックス ${e.y}〜${r3(e.y + e.h)}in`);
+  }
+
+  // ===== S11 まとめ（箇条書き5行） =====
+  {
+    const id = 'S11';
     const s = slide(id, 4);
     const items = [
       mark(q(id, 'ACE 阻害薬・ARB は休薬でも継続でも可。止めたら再開日を書く'), ['止めたら再開日を書く', VER]),
@@ -760,6 +690,7 @@ async function main() {
   }
 
   if (DEVIATIONS.length) console.log('[deviations]\n  ' + DEVIATIONS.join('\n  '));
+  fs.mkdirSync(RENDER_DIR, { recursive: true });
   const res = await deck.save({ render: true, renderDir: RENDER_DIR });
   if (res.render) console.log('[render] ' + JSON.stringify(res.render));
   if (res.violations !== 0 || res.validateOk === false) process.exitCode = 1;
