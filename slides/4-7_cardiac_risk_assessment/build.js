@@ -370,10 +370,14 @@ const emphNeed = o => itemTextH(o.lines, { size: o.size || 24, ls: o.ls || 1, ga
  * s.table は行高を実機メイリオの 1.5 em で取るため、行の多い表が本文ゾーン（出典 2 行時 1.85〜6.46in）に入らない。
  * セル幅の検査は decklib と同じ推定器（lint 式、全角 ×1.12）で行い、重なり検査用の登録も同じく行う。
  * cell: 文字列（'\n' で改行）| {text, color, bold, align}
+ * o.round: 行の高さの切り上げ単位（既定 0.01in。S4・S6 は 0.001in にして、余白を本文ゾーンの限度まで使う。4-10 と同じ）
  */
 function tightTable(s, rows, o) {
   const size = o.size || 22, LS = o.lineSpacing || size * 1.2;
   const m = o.margin || [3, 6, 3, 6];   // pt: 上, 右, 下, 左
+  // pptxgenjs は margin[0] が 1 未満だと 4 値すべてをインチとして扱うため、上の余白は 1pt 以上にする
+  if (!(m[0] >= 1)) throw new Error(`p${s.page} 表: 上の余白 ${m[0]}pt は 1pt 以上にしてください`);
+  const RND = o.round || 0.01;
   const colW = o.colW, nCol = colW.length;
   const w = colW.reduce((a, b) => a + b, 0);
   const rowH = [];
@@ -409,7 +413,7 @@ function tightTable(s, rows, o) {
         },
       };
     });
-    rowH.push(Math.ceil((maxLines * LS / 72 + (m[0] + m[2]) / 72) * 100 - 1e-6) / 100);
+    rowH.push(r3(Math.ceil((maxLines * LS / 72 + (m[0] + m[2]) / 72) / RND - 1e-6) * RND));
     return cells;
   });
   const h = rowH.reduce((a, b) => a + b, 0);
@@ -419,7 +423,7 @@ function tightTable(s, rows, o) {
     border: { type: 'solid', pt: 1, color: C.border }, valign: 'middle',
   });
   s._reg('box', o.x, o.y, w, h, 'table');
-  return { x: o.x, y: o.y, w, h: r2(h), rowH };
+  return { x: o.x, y: o.y, w, h: r3(h), rowH };
 }
 
 /**
@@ -498,8 +502,10 @@ async function main() {
   {
     const id = 'S3';
     const s = specSlide(deck, id);
+    // 2 行にまたがる項目の行どうしが詰まって見えないよう行間を 0.85（実機メイリオで 1.28 em）にする。
+    // 強調ボックス（2 行）を本文ゾーンに残すため、カードの高さは変えず、項目の間を 3.5pt に詰めて吸収する。
     const L = {
-      title: q(id, '見つけたら延期（待機手術）'), titleColor: C.vermilion, ls: 0.8, gap: 6,
+      title: q(id, '見つけたら延期（待機手術）'), titleColor: C.vermilion, ls: 0.85, gap: 3.5,
       items: [
         q(id, '急性冠症候群、MI 後 60 日以内'),
         { lines: brk(id, '非代償性心不全（起座呼吸、浮腫の悪化）', '（起座') },
@@ -508,7 +514,7 @@ async function main() {
       ],
     };
     const R = {
-      title: q(id, '時期と検査を相談する因子'), titleColor: C.blue, ls: 0.8, gap: 6,
+      title: q(id, '時期と検査を相談する因子'), titleColor: C.blue, ls: 0.85, gap: 3.5,
       items: [
         { lines: brk(id, '冠動脈ステント・CABG の既往（→ 4-8）', '（→') },
         q(id, '脳卒中・TIA から 3 か月以内'),
@@ -545,26 +551,31 @@ async function main() {
       [f('インスリン治療中の糖尿病'), q(id, '経口薬だけの糖尿病は数えない')],
       [f('クレアチニン 2.0 mg/dL 超'), q(id, '177 µmol/L 超')],
     ];
-    // 列幅: spec の目安 4.2 / 8.0 では「インスリン治療中の糖尿病」「クレアチニン 2.0 mg/dL 超」が 1 列目に 1 行で入らない。
+    // 列幅: spec の目安 4.2 / 8.0 では「インスリン治療中の糖尿病」（推定 4.11in）「クレアチニン 2.0 mg/dL 超」（推定 4.24in）が
+    // 1 列目（使える幅 4.03in）に 1 行で入らず、表が 2 行ぶん伸びて下の 1 行が本文ゾーンに入らない。
     // 1 列目を 4.41in に広げて全因子を 1 行にする（2 列目 7.79in でも中身は 1〜2 行のまま。合計 12.2in）。
-    // 表（9 行ぶん）＋下の 1 行（2 行に割れる）を本文ゾーン（1.85〜6.46in）に入れるため、セルの上下余白を 1pt にする（4-9 の S8 と同じ）。
-    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [4.41, 7.79], margin: [1, 6, 1, 6] });
+    // 表（9 行ぶん）は上端 TOP_T・セル余白 TM（字と罫線の間 上下とも約 0.05in）。
+    const t = tightTable(s, rows, { x: X0, y: TOP_T, colW: [4.41, 7.79], margin: TM, round: 0.001 });
+    // 下の 1 行（全角 41 字ぶんで 2 行に割れる。「（Lee」の前で改行）は 22pt。表の下 0.24in から本文下端までを使い、
+    // 行間はその高さに入る最大（0.8〜1.0）にする（2 行が詰まって見えないように）。
     const line = brk(id, '主要心合併症：0 点 0.4%、1 点 0.9%、2 点 7%、3 点以上 11%（Lee 1999 検証群）。近年は 3.9〜15%', '（Lee');
     const items = [{ lines: markLines(line, { 1: [['近年は 3.9〜15%', C.vermilion]] }) }];
-    let size = 24;
-    const o = { size, ls: 0.8, gap: 0, marker: false };
-    if (t.y + t.h + GAP + itemTextH(items, o) > BOT) o.size = size = 22;
-    const lh = r2(itemTextH(items, o) + 0.01);
-    const ly = r2(t.y + t.h + Math.max(GAP + 0.02, (BOT - t.y - t.h - lh) / 2));
-    itemText(s, items, { ...o, x: X0, y: ly, w: BW, h: lh });
+    const size = 22;
+    const ly = r3(t.y + t.h + GAP);
+    const lh = r3(BOT - ly);
+    const ls = Math.min(1, Math.floor((lh - 0.005) / (line.length * size / 72 * MEIRYO_EM) * 100) / 100);
+    if (ls < 0.8) throw new Error(`${id}: 下の 1 行の行間 ${ls} < 0.8（表が高すぎます）`);
+    itemText(s, items, { size, ls, gap: 0, marker: false, x: X0, y: ly, w: BW, h: lh });
+    assertBottom(id, '表', t.y + t.h, ZONE_BOT);
     assertBottom(id, '下の 1 行', ly + lh);
-    console.log(`  ${id}: 表 ${t.y}〜${r2(t.y + t.h)}（行高 ${t.rowH.join(', ')}）、下の 1 行 ${size}pt ${ly}〜${r2(ly + lh)}`);
+    console.log(`  ${id}: 表 ${t.y}〜${r3(t.y + t.h)}（行高 ${t.rowH.join(', ')}）、下の 1 行 ${size}pt 行間 ${ls} ${ly}〜${r3(ly + lh)}`);
   }
 
   // ===== S5 METs と DASI で測る（2 列カード + 強調ボックス） =====
   {
     const id = 'S5';
     const s = specSlide(deck, id);
+    // 左右とも項目間 8pt・行間 0.8 でそろえる。高さは右（7 行）に合わせ、左（5 行）は下に空きを残す。
     const L = {
       title: q(id, '4 METs の目安'), titleColor: C.blue, ls: 0.8, gap: 8,
       items: [

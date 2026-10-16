@@ -401,7 +401,11 @@ function combos(arr, k, start = 0) {
   for (let i = start; i <= arr.length - k; i++) for (const rest of combos(arr, k - 1, i + 1)) out.push([arr[i], ...rest]);
   return out;
 }
-function sourcesOf(id) {
+/**
+ * shorten: [[元の（）, 短くした（）], ...]。（）を丸ごと外す前に、（）内の補足の一部だけを外す形を試す
+ * （例: 「（SPAQI 神経疾患薬）」→「（SPAQI）」。文献を特定する語は残す）。
+ */
+function sourcesOf(id, shorten = []) {
   const spec = SPEC[id] && SPEC[id].sources;
   if (!spec) return undefined;
   const items0 = spec.split(' / ');
@@ -409,28 +413,48 @@ function sourcesOf(id) {
   if (lib && lib.length <= 2) return items0;
   const parens = [];
   items0.forEach((it, ii) => { for (const mm of it.matchAll(/（[^（）]*）/g)) parens.push({ ii, text: mm[0] }); });
-  for (let k = 0; k <= parens.length; k++) {
-    // 同じ段階では区切りの空白を残す形と詰める形を比べ、改行位置のよい方（同順位なら空白を残す方）をとる
-    let best = null;
-    for (const sep of [' / ', '/']) {
-      for (const P of combos(parens, k)) {
-        const items = items0.map((it, ii) => {
-          let t = it;
-          for (const p of P) if (p.ii === ii) t = t.replace(p.text, '');
-          return t;
-        });
-        const r = split2(items.join(sep), sep);
-        if (r && (!best || r.rank < best.r.rank)) best = { r, P, sep };
-      }
-    }
-    if (!best) continue;
+  const done = (best, extra) => {
     const lines = best.r.b ? [best.r.a, best.r.b] : [best.r.a];
     const what = [];
     if (best.sep === '/') what.push('区切りの前後の空白を詰めた');
-    if (best.P.length) what.push(`（）内の補足 ${best.P.map(p => p.text).join('・')} を外した`);
+    if (extra) what.push(extra);
+    if (best.P && best.P.length) what.push(`（）内の補足 ${best.P.map(p => p.text).join('・')} を外した`);
     if (best.r.rank > 0) what.push('文献の途中の語の切れ目で改行');
     DEVIATIONS.push(`${id} 出典: 「${spec}」→「${lines.join(' ⏎ ')}」（16pt・2 行に収めるため。${what.join('、')}）`);
     return lines;
+  };
+  // 同じ段階では区切りの空白を残す形と詰める形を比べ、改行位置のよい方（同順位なら空白を残す方）をとる
+  const bestOf = (variants) => {
+    let best = null;
+    for (const sep of [' / ', '/']) {
+      for (const v of variants) {
+        const r = split2(v.items.join(sep), sep);
+        if (r && (!best || r.rank < best.r.rank)) best = { r, P: v.P, sep };
+      }
+    }
+    return best;
+  };
+  // 1) 文言そのまま
+  let best = bestOf([{ items: items0, P: [] }]);
+  if (best) return done(best);
+  // 2) （）内の補足の一部だけを外す
+  if (shorten.length) {
+    const items = items0.map(it => shorten.reduce((t, [a, b]) => t.replace(a, b), it));
+    if (items.join(' / ') === items0.join(' / ')) throw new Error(`${id}: shorten の（）が出典にありません`);
+    best = bestOf([{ items, P: [] }]);
+    if (best) return done(best, `（）内の補足の一部を外した（${shorten.map(([a, b]) => `${a}→${b}`).join('、')}）`);
+  }
+  // 3) （）内の補足を丸ごと外す（外す数が最小の形）
+  for (let k = 1; k <= parens.length; k++) {
+    best = bestOf(combos(parens, k).map(P => ({
+      P,
+      items: items0.map((it, ii) => {
+        let t = it;
+        for (const p of P) if (p.ii === ii) t = t.replace(p.text, '');
+        return t;
+      }),
+    })));
+    if (best) return done(best);
   }
   throw new Error(`${id}: 出典が 2 行に収まりません`);
 }
@@ -442,7 +466,7 @@ async function main() {
     author: 'Anes-lecture',
     deckTitle: '4-14 常用薬③：その他',
   });
-  const slide = (id, chapter) => deck.slide({ title: titleOf(id), chapter, notes: notesOf(id), sources: sourcesOf(id) });
+  const slide = (id, chapter, shorten) => deck.slide({ title: titleOf(id), chapter, notes: notesOf(id), sources: sourcesOf(id, shorten) });
 
   // ===== S1 表紙 =====
   {
@@ -453,6 +477,8 @@ async function main() {
 
   // ===== S2 ACE 阻害薬・ARB の扱い（箇条書き6行 + 強調ボックス） =====
   // 箇条書き 24pt・段落後 5pt、強調ボックスは 24pt 太字 2 行（行送り 1.2 em）。
+  // 箇条書きの枠は強調ボックスの 0.24in 上までとり、上下中央に置く（実機メイリオでは枠いっぱい、
+  // 行の低い代替フォントでも上下の空きが偏らない）。
   {
     const id = 'S2';
     const s = slide(id, 0);
@@ -465,19 +491,22 @@ async function main() {
       mark(q(id, '配合錠（ARB＋Ca 拮抗薬、ARNI）の中身を見落とさない'), ['中身を見落とさない', VER]),
     ];
     const BUL = { y: TOP, size: 24, gap: 5 };
-    const bh = heightFor(items.length, BUL.size, BUL.gap);
-    s.bullets(items, { ...BUL, h: bh });
     const em = brk(id, 'どちらでもよいが、続けるなら導入時の低血圧に備える。止めたら再開日を書く', '止めたら');
     const e = emphTight(s, { x: X0, w: BW, yBottom: BOTTOM, lineColor: TEAL, size: 24,
       lines: [em[0], mark(em[1], ['止めたら再開日を書く', VER])] });
-    if (e.y - (BUL.y + bh) < GAP - 1e-9) throw new Error(`${id}: 箇条書きと強調ボックスの間隔 ${r3(e.y - BUL.y - bh)}in < ${GAP}`);
-    console.log(`  p${s.page} 箇条書き ${BUL.y}〜${r3(BUL.y + bh)}in、強調ボックス ${e.y}〜${r3(e.y + e.h)}in`);
+    const need = heightFor(items.length, BUL.size, BUL.gap);
+    const bh = r3(e.y - GAP - BUL.y);
+    if (need > bh + 1e-9) throw new Error(`${id}: 箇条書きの高さ ${need} > ${bh}`);
+    s.bullets(items, { ...BUL, h: bh, valign: 'middle' });
+    console.log(`  p${s.page} 箇条書き枠 ${BUL.y}〜${r3(BUL.y + bh)}in（必要 ${need}in、上下中央）、強調ボックス ${e.y}〜${r3(e.y + e.h)}in`);
   }
 
   // ===== S3 ほかの降圧薬とスタチン（表 3列 × 5行＋見出し行） =====
-  // spec の列幅（2.8 / 3.6 / 5.8）では 3 列目が 3〜4 行に折れて本文ゾーンに入らない。1・2 列目を最長行
-  // （「クロニジン」「続ける（I）」）の幅まで詰めて 3 列目を広げる（合計 12.2in）。2 列目は全角 5 字幅のため、
-  // 「当日は休薬が一般的」は「当日は休薬／が一般的」、「続ける（I）。当日朝も」は 3 行に割る（文言は同じ）。
+  // spec の列幅（2.8 / 3.6 / 5.8）では 3 列目が 4 行に折れ、表の高さが約 5.6in で本文ゾーン（4.62in）に入らない。
+  // 22pt のまま入れるには行 4 の理由「急な中止でリバウンド高血圧。新規開始は無益（3）」を 1 行にする必要があり、
+  // 3 列目は 8.17in 以上になる。1 列目は「クロニジン」の幅、残りを 2 列目にとる（合計 12.2in）。
+  // セルの左右余白を 6pt → 4pt にして 2 列目を全角 6 字幅にし、「当日は休薬が／一般的」と文節で割る
+  // （「続ける（I）。」は 6.6 字幅で入らないので「続ける／（I）。／当日朝も」のまま。行 5 は 3 列目も 3 行）。
   {
     const id = 'S3';
     const s = slide(id, 0);
@@ -490,21 +519,23 @@ async function main() {
       [drug(q(id, 'β遮断薬')), keep(q(id, '続ける（I）')),
         j(brk(id, '周術期の中止で 30 日死亡のオッズ比 3.93（観察研究）。当日の新規開始は害（POISE）。始めるなら 7 日以上前', '（観察研究）', '始めるなら'))],
       [drug(q(id, 'Ca 拮抗薬')), keep(q(id, '続ける')), q(id, '中止の利益はない')],
-      [drug(q(id, '利尿薬')), stop(j(brk(id, '当日は休薬が一般的', 'が一般的'))), j(brk(id, '脱水・低血圧・腎機能。溢水のある心不全では続ける', '溢水'))],
+      [drug(q(id, '利尿薬')), stop(j(brk(id, '当日は休薬が一般的', '一般的'))), j(brk(id, '脱水・低血圧・腎機能。溢水のある心不全では続ける', '溢水'))],
       [drug(q(id, 'クロニジン')), keep(q(id, '続ける')), q(id, '急な中止でリバウンド高血圧。新規開始は無益（3）')],
       [drug(q(id, 'スタチン')), keep(j(brk(id, '続ける（I）。当日朝も', '（I）', '当日朝も'))),
         j(brk(id, '術後 4 日超の中断で心筋壊死のオッズ比 2.9（大動脈手術）。ASCVD または 10 年リスクで適応があれば開始（I）', 'オッズ比', 'ASCVD'))],
     ];
-    const m = [3, 6, 3, 6];
-    const colW = fitColW(rows, 22, m, 2);
+    const m = [3, 4, 3, 4];
+    const colW = fitColW(rows, 22, m, 1);
     const t = tightTable(s, rows, { x: X0, y: TOP_T, colW, margin: m });
     console.log(`  p${s.page} 表: 列幅 ${colW.join(' / ')}in、行高 ${t.rowH.join(' / ')}in、下端 ${r3(t.y + t.h)}in`);
     if (t.y + t.h > BOTTOM + 0.011) throw new Error(`${id}: 表の下端 ${r3(t.y + t.h)} > ${BOTTOM}`);
   }
 
   // ===== S4 ステロイドカバー（2列カード + 強調ボックス） =====
-  // カード本文 22pt・行送り 1.2 em。右のカードの「続いて 200 mg/24 時間を持続。食べられたら」を 1 行に入れるため、
-  // 左のカードは「5 mg/日以上を 1 か月以上」の幅に詰め、残りを右のカードに。
+  // カード本文 22pt・行送り 1.2 em。右のカードの 3 項目めは文の切れ目（「持続。」の後）で割り、2 行目
+  // 「食べられたら通常量の 2 倍を 48 時間経口で」が入る幅を右のカードに残す。左のカードは
+  // 「過去 6 か月に経口 2 週超・」が 1 行に入る幅にし、「長期の高用量 ICS（GINA）」を 2 行目にまとめる。
+  // 最終行と箱の下端の間は CARD.padB（0.15in）あける。
   {
     const id = 'S4';
     const s = slide(id, 1);
@@ -516,7 +547,7 @@ async function main() {
       items: [
         brk(id, 'プレドニゾロン換算 5 mg/日以上を 1 か月以上', '5 mg'),
         brk(id, '経口だけでなく吸入・点鼻・関節内・外用も', '点鼻'),
-        brk(id, '過去 6 か月に経口 2 週超・長期の高用量 ICS（GINA）', '2 週超', 'ICS'),
+        brk(id, '過去 6 か月に経口 2 週超・長期の高用量 ICS（GINA）', '長期'),
       ],
     };
     const c2 = {
@@ -524,7 +555,7 @@ async function main() {
       items: [
         (() => { const l = brk(id, '普段のステロイドは当日朝も飲む。カバーは『上乗せ』', 'カバーは'); return [l[0], mark(l[1], ['『上乗せ』', VER])]; })(),
         [q(id, '導入時にヒドロコルチゾン 100 mg 静注')],
-        brk(id, '続いて 200 mg/24 時間を持続。食べられたら通常量の 2 倍を 48 時間経口で', '通常量'),
+        brk(id, '続いて 200 mg/24 時間を持続。食べられたら通常量の 2 倍を 48 時間経口で', '食べられたら'),
         brk(id, '小手術に一律 100 mg は異論あり（→ 3-12）', '異論'),
       ],
     };
