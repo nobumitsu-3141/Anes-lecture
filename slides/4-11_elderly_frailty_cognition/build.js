@@ -11,11 +11,16 @@
  * 密度への対応:
  *  - 2 列カード（S3〜S6）の本文は 22pt のまま、1 行 1 枠の s.text を一定の行送りで置く（4-13 と同じ方式。
  *    spcPts は slide_lint の高さ推定を壊し、spcPct は代替フォントで行送りが変わるため）。
- *    項目の頭は小さな丸（ネイティブ図形）で示す。
+ *    項目の頭は小さな丸（ネイティブ図形）で示す。カードの内側余白は上下とも文字枠から測り、
+ *    項目の間隔はカードごとに余りを配る（左右のカードで下端の余白がそろう）。
  *  - S3・S4 は行送り 1.2 em。
  *  - S5・S6 は spec の文言のままだと 22pt・1.2 em では各カード 10〜12 行になり、全幅の強調ボックスの上に
  *    入らない（1.2 em で入るのは各カード 8 行まで）。文言の短縮を最小にするため行送りを 1.1 em に詰め、
  *    それでも入らない分だけ語句を短くした（alt()。数値・単位・薬剤名・閾値は落としていない）。
+ *    左右のカード幅は、語句の切れ目で割ったときの行数が最小になる幅（全角換算の字数で指定）。
+ *    2 列の合計幅で入る字数は全角約 33 字なので、spec の文言のままでは S5 は左 11・右 10 行、
+ *    S6 は左 10・右 11 行になり、入るのは S5 で 10 行、S6 で 9 行まで（出典 2 行の上、強調ボックスの下に
+ *    0.24in を空け、カードの下余白を 0.065in［文字枠から］とったとき）。
  */
 const fs = require('fs');
 const path = require('path');
@@ -101,12 +106,16 @@ function alt(id, orig, shown, why) {
 function altBrk(id, orig, shown, why, ...breaks) { return split(alt(id, orig, shown, why), breaks, id); }
 
 // ---------------------------------------------------------------------------
-// 出典: spec の sources 行を 16pt・幅 11.6in の 2 行に収める（4-9 と同じ手順）
+// 出典: spec の sources 行を 16pt・幅 11.6in の 2 行に収める
 //  0) ライブラリ既定（' / ' の区切りでだけ改行）で 2 行に入ればそのまま渡す。
-//  1) 文言はそのままで、文献の途中の語の切れ目で改行する（区切り > 著者「et al.」の後 > 誌名と年の間 > その他の空白）。
-//  2) 入らなければ区切りの前後の空白を詰める（' / ' → '/'）。
-//  3) それでも入らなければ（）内の補足を後ろの文献から外す。
-// 文献は落とさない（落とさないと入らないときは Error）。
+//  1) 区切りだけでは入らないとき（この講義の出典は 3 件とも 1 件 5.4〜10.3in で、どの 2 件を並べても
+//     11.6in を超える）は、文献の途中で改行するが、著者名・誌名の途中では割らない。改行してよい位置は
+//     区切り（rank 0）＞ 著者と誌名の間（「et al.」「Theou O.」など著者の末尾の「.」の後。rank 1）＞
+//     誌名と年の間（rank 2）の順。
+//  2) 1) の位置で入らなければ区切りの前後の空白を詰める（' / ' → '/'）。
+//  3) それでも入らなければ（）内の補足を後ろの文献から外す（deviations に記録）。
+//  4) どの段階でも 1) の位置で割れないときだけ、文言はそのままで残りの空白で改行する（ログに出す）。
+// 文献そのものは落とさない（落とさないと入らないときは Error）。
 // ---------------------------------------------------------------------------
 const SRC = LAYOUT.source;
 function libLines(items) {
@@ -118,7 +127,8 @@ function libLines(items) {
   }
   return lines;
 }
-function split2(str, sep) {
+const SPLIT_KIND = ['区切り', '著者と誌名の間', '誌名と年の間', '語の切れ目'];
+function split2(str, sep, maxRank) {
   const fitsLine = l => fits(l, SRC.size, SRC.w);
   const cands = [];
   for (let i = 1; i < str.length; i++) {
@@ -128,48 +138,60 @@ function split2(str, sep) {
       a = str.slice(0, i); b = str.slice(i + 1);
       if (a.endsWith('/') || b.startsWith('/')) continue;
       if (/ et$/.test(a)) continue;                   // 「et」と「al.」の間では切らない
-      if (a.endsWith('al.')) rank = 1;                 // 著者名（et al.）の後
+      if (a.endsWith('.')) rank = 1;                   // 著者の末尾（et al. / Theou O. / Society. など）の後
       else if (/^\d/.test(b)) rank = 2;                // 誌名と年の間
       else rank = 3;
     } else continue;
     a = a.trim(); b = b.trim();
-    if (a && b && fitsLine(a) && fitsLine(b)) cands.push({ a, b, rank });
+    if (rank <= maxRank && a && b && fitsLine(a) && fitsLine(b)) cands.push({ a, b, rank });
   }
   if (!cands.length) return null;
   cands.sort((x, y) => x.rank - y.rank || y.a.length - x.a.length);
-  return [cands[0].a, cands[0].b];
+  return cands[0];
 }
 function sourcesOf(id) {
   const spec = SPEC[id] && SPEC[id].sources;
   if (!spec) return undefined;
   const items = spec.split(' / ');
   if (libLines(items).length <= 2) return items;
-  let r = split2(spec, ' / ');
-  if (r) { console.log(`  ${id} 出典: 文献の途中の語の切れ目で改行（文言はそのまま）: ${r[0]} ⏎ ${r[1]}`); return r; }
-  r = split2(items.join('/'), '/');
-  if (r) { DEVIATIONS.push(`${id} 出典: 区切りの前後の空白を詰めた（' / ' → '/'）`); return r; }
-  const cut = items.slice();
+  const stages = [
+    { items, sep: ' / ', dev: null },
+    { items, sep: '/', dev: "区切りの前後の空白を詰めた（' / ' → '/'）" },
+  ];
+  const cut = items.slice(), removed = [];
   for (let k = cut.length - 1; k >= 0; k--) {
     if (!/（[^）]*）$/.test(cut[k])) continue;
     const was = cut[k];
     cut[k] = cut[k].replace(/（[^）]*）$/, '');
-    for (const sep of [' / ', '/']) {
-      r = split2(cut.join(sep), sep);
-      if (r) {
-        DEVIATIONS.push(`${id} 出典: 「${was}」→「${cut[k]}」${sep === '/' ? '、区切りの前後の空白を詰めた' : ''}` +
-          `（区切りの空白を詰めても 16pt 2 行に入らないため（）内の補足を外した。行: ${r[0]} ⏎ ${r[1]}）`);
-        return r;
-      }
-    }
+    removed.push(`「${was}」→「${cut[k]}」`);
+    const its = cut.slice(), rm = removed.join('、');
+    stages.push({ items: its, sep: ' / ', dev: `${rm}（（）内の補足を外した）` });
+    stages.push({ items: its, sep: '/', dev: `${rm}（（）内の補足を外し、区切りの前後の空白を詰めた）` });
+  }
+  for (const st of stages) {
+    const r = split2(st.items.join(st.sep), st.sep, 2);
+    if (!r) continue;
+    if (st.dev) {
+      DEVIATIONS.push(`${id} 出典: ${st.dev}。文言のままでは著者名・誌名を割らずに 16pt 2 行に入らないため。` +
+        `改行は${SPLIT_KIND[r.rank]}: ${r.a} ⏎ ${r.b}`);
+    } else console.log(`  ${id} 出典: ${SPLIT_KIND[r.rank]}で改行（文言はそのまま）: ${r.a} ⏎ ${r.b}`);
+    return [r.a, r.b];
+  }
+  const r = split2(spec, ' / ', 3);
+  if (r) {
+    console.log(`  ${id} 出典: 区切りの空白を詰めても（）の補足を外しても、著者名・誌名を割らない位置では 2 行に入らない。` +
+      `文言はそのままで語の切れ目で改行: ${r.a} ⏎ ${r.b}`);
+    return [r.a, r.b];
   }
   throw new Error(`${id}: 出典が 2 行に収まりません`);
 }
 /**
- * 1 行の文字列に部分装飾を付けて run 配列にする。marks: [[語, 色], ...]（太字）。語は行の中に 1 回だけ現れること。
+ * 1 行の文字列に部分装飾を付けて run 配列にする。marks: [[語, 色, 追加の書式?], ...]（太字）。語は行の中に 1 回だけ現れること。
+ * 警告（レッド）は色だけに頼らないよう下線も付ける（RED_U）。
  */
 function mark(line, ...marks) {
   let runs = [line];
-  for (const [w, color] of marks) {
+  for (const [w, color, extra] of marks) {
     const next = [];
     let found = 0;
     for (const r of runs) {
@@ -178,7 +200,7 @@ function mark(line, ...marks) {
       if (k < 0) { next.push(r); continue; }
       found++;
       if (k > 0) next.push(r.slice(0, k));
-      next.push({ text: w, color, bold: true });
+      next.push({ text: w, color, bold: true, ...(extra || {}) });
       if (k + w.length < r.length) next.push(r.slice(k + w.length));
     }
     if (found !== 1) throw new Error(`mark: 「${line}」に「${w}」が ${found} 回`);
@@ -233,9 +255,10 @@ const CARD = { padX: 0.07, ind: 0.2, dot: 0.1, dotX: 0.03, size: 22, titleSize: 
 const CH22 = 22 / 72 * 1.12;
 /** 本文の全角 n 字が入るカード幅 */
 const cardWFor = n => r3(n * CH22 + 2 * CARD.padX + CARD.ind + 0.002);
+/** 項目間を除いたカードの高さ。padTop は箱の上端から見出しの文字枠まで、padBottom は最終行の文字枠の下端から箱の下端まで */
 function cardFixedH(c, k) {
   const nLines = c.items.reduce((a, it) => a + it.length, 0);
-  return k.padTop + k.padBottom + lineIn(CARD.titleSize, k.em) + k.titleGap + nLines * lineIn(CARD.size, k.em);
+  return k.padTop + lineIn(CARD.titleSize, k.em) + k.titleGap + (nLines - 1) * lineIn(CARD.size, k.em) + BOX_H[CARD.size] + k.padBottom;
 }
 function drawCard(s, c, x, y, w, h, itemGap, k) {
   s.box({ x: r3(x), y: r3(y), w: r3(w), h: r3(h), fill: C.bg, radius: 0.08 });
@@ -249,29 +272,33 @@ function drawCard(s, c, x, y, w, h, itemGap, k) {
     tightText(s, lines, { x: ix + CARD.ind, y: yy, w: iw - CARD.ind, size: CARD.size, em: k.em });
     yy += lines.length * L + itemGap;
   });
-  const end = yy - itemGap;
+  const end = yy - itemGap - L + BOX_H[CARD.size];   // 最終行の文字枠の下端
   if (end > y + h - k.padBottom + 1e-6) {
     throw new Error(`p${s.page} カード「${runText(c.title)}」: 高さ不足（本文の下端 ${r3(end)} > ${r3(y + h - k.padBottom)}）`);
   }
+  return end;
 }
 /**
  * 2 列のカード。widths: 各カードの幅（in）。高さは y〜bottom。
- * 項目の間隔は、詰まった方のカードに合わせて余りを配る（上限 maxGap）。全カード同じ間隔。
+ * 項目の間隔はカードごとに余りを配る（上限 maxGap）。左右のカードとも最終行の下の余白が padBottom にそろう。
  */
 function cardRow(s, cards, o) {
   const k = { em: o.em, padTop: o.padTop, padBottom: o.padBottom, titleGap: o.titleGap, dotY: o.dotY };
   const sumW = o.widths.reduce((a, b) => a + b, 0) + GAP * (cards.length - 1);
   if (sumW > BW + 1e-6) throw new Error(`p${s.page}: カード幅の合計 ${r3(sumW)} > ${r3(BW)}`);
   const h = r3(o.bottom - o.y);
-  let gap = Math.min(o.maxGap, ...cards.map(c => (c.items.length > 1 ? (h - cardFixedH(c, k)) / (c.items.length - 1) : Infinity)));
-  gap = Math.floor(gap * 1000) / 1000;
-  if (gap < -1e-9) throw new Error(`p${s.page}: カードの高さが足りません（h=${h}、必要 ${cards.map(c => r3(cardFixedH(c, k))).join(' / ')}）`);
-  gap = Math.max(0, gap);
+  const gaps = cards.map(c => {
+    const free = h - cardFixedH(c, k);
+    if (free < -1e-9) throw new Error(`p${s.page} カード「${runText(c.title)}」: 高さが足りません（h=${h}、必要 ${r3(cardFixedH(c, k))}）`);
+    const g = c.items.length > 1 ? Math.min(o.maxGap, free / (c.items.length - 1)) : 0;
+    return Math.max(0, Math.floor(g * 1000) / 1000);
+  });
   let x = X0;
-  cards.forEach((c, i) => { drawCard(s, c, x, o.y, o.widths[i], h, gap, k); x += o.widths[i] + GAP; });
-  console.log(`  p${s.page} カード: 幅 ${o.widths.join(' / ')}in、${o.y}〜${o.bottom}in（高さ ${h}）、行送り ${o.em} em、項目間 ${gap}in、` +
-    `行数 ${cards.map(c => c.items.reduce((a, it) => a + it.length, 0)).join(' / ')}`);
-  return { h, gap };
+  const ends = cards.map((c, i) => { const e = drawCard(s, c, x, o.y, o.widths[i], h, gaps[i], k); x += o.widths[i] + GAP; return e; });
+  console.log(`  p${s.page} カード: 幅 ${o.widths.join(' / ')}in、${o.y}〜${o.bottom}in（高さ ${h}）、行送り ${o.em} em、` +
+    `行数 ${cards.map(c => c.items.reduce((a, it) => a + it.length, 0)).join(' / ')}、項目間 ${gaps.join(' / ')}in、` +
+    `下余白（文字枠から） ${ends.map(e => r3(o.bottom - e)).join(' / ')}in`);
+  return { h, gaps };
 }
 
 /** 強調ボックス（白地＋ティールの枠。文字は太字・中央）。decklib の box（通常の行送り）。 */
@@ -284,19 +311,21 @@ function emphBox(s, o) {
   });
 }
 /**
- * 行送りを詰めた強調ボックス（22pt・2 行）。下端 yBottom に置き、{y, h} を返す。
- * メイリオは行の枠の中で字面が下寄り（字面の上端が枠上端から約 0.18 em、下端が約 1.18 em）。代替フォント
- * （LibreOffice の描画）は字面がそれより上に出るので、両者の中間（0.09 em）だけ文字の枠を上にずらす。
+ * 行送りを詰めた強調ボックス（22pt・2 行）。下端 yBottom に置き、{y, h} を返す（h を渡せばその高さ）。
+ * 字面は行の枠の中で下寄り（メイリオで枠上端から約 0.18〜1.18 em、LibreOffice の代替フォントの描画で
+ * 約 0.2〜1.11 em）。両者の平均（GLYPH）で字面の上下が箱の中央に来るように文字の枠を置く。
  */
+const GLYPH = { top: 0.19, bottom: 1.145 };
 const EMPH_T = { padY: 0.05, padX: 0.15 };
 function emphTight(s, o) {
   const size = o.size || 22;
   const n = o.lines.length, L = lineIn(size, o.em), emIn = size / 72;
-  const h = r3(2 * EMPH_T.padY + n * L);
+  const h = r3(o.h != null ? o.h : 2 * EMPH_T.padY + n * L);
   const y = r3(o.yBottom - h);
   s.box({ x: X0, y, w: BW, h, fill: C.white, radius: EMPH.radius, line: { color: o.lineColor || C.teal, width: EMPH.lineW } });
-  const glyphH = (n - 1) * L + emIn;                     // 1 行目の字面の上端から最終行の字面の下端まで
-  const ty = y + (h - glyphH) / 2 - 0.09 * emIn;
+  const glyphH = (n - 1) * L + (GLYPH.bottom - GLYPH.top) * emIn;   // 1 行目の字面の上端から最終行の字面の下端まで
+  const ty = y + (h - glyphH) / 2 - GLYPH.top * emIn;
+  if (ty < y - 1e-6 || ty + (n - 1) * L + BOX_H[size] > y + h + 1e-6) throw new Error(`p${s.page} 強調ボックス: 文字枠が箱からはみ出します（h=${h}）`);
   tightText(s, o.lines, { x: X0 + EMPH_T.padX, y: ty, w: BW - 2 * EMPH_T.padX, size, bold: true, align: 'center', em: o.em });
   return { y, h };
 }
@@ -315,6 +344,7 @@ async function main() {
     return deck.slide({ title: sp.title, chapter: sp.ch, notes: notesOf(id), sources: sourcesOf(id) });
   };
   const VER = C.vermilion, BLUE = C.blue, RED = C.red;
+  const RED_U = { underline: true };   // 警告のレッドは下線も付け、近くのバーミリオンと色だけで区別させない
 
   // ===== S1 表紙 =====
   {
@@ -327,7 +357,7 @@ async function main() {
   const BUL = { y: 1.9, size: 24, gap: 10 };
   const bulH = n => heightFor(n, BUL.size, BUL.gap);
   const EMPH_H = 1.2;
-  const EMPH_W = { x: X0 + 0.6, w: BW - 1.2 };
+  const EMPH_W = { x: X0, w: BW };   // 強調ボックスは全スライド全幅（S3〜S6 と同じ）
 
   // ===== S2 フレイルが予後を決める（箇条書き5行 + 強調ボックス） =====
   {
@@ -347,8 +377,8 @@ async function main() {
   }
 
   // 2 列カード＋強調ボックス（1 行・24pt）の共通寸法（S3・S4。行送り 1.2 em）
-  // 字面が行の枠の下寄りなので、カードの内側余白は上を小さく、下を大きくする
-  const K12 = { em: 1.2, padTop: 0.04, padBottom: 0.08, titleGap: 0.04, dotY: 0.2, maxGap: 0.16 };
+  // padBottom は最終行の文字枠の下端から（メイリオの字面の下端は文字枠の下端の約 0.05in 上）
+  const K12 = { em: 1.2, padTop: 0.06, padBottom: 0.08, titleGap: 0.04, dotY: 0.2, maxGap: 0.36 };
   const EMPH1_24 = 0.58;
   const halfW = r3((BW - GAP) / 2);   // 5.995
 
@@ -379,7 +409,7 @@ async function main() {
           brk(id, '栄養：BMI 18.5 未満、Alb 3.0 g/dL 未満、6 か月で 10〜15% 超の体重減少', 'Alb', '6 か月'),
         ],
       },
-    ], { ...K12, y: Y0, bottom: r3(ey - GAP), widths: [halfW, halfW] });
+    ], { ...K12, y: Y0_T, bottom: r3(ey - GAP), widths: [halfW, halfW] });
   }
 
   // ===== S4 Mini-Cog を全員に（2列カード + 強調ボックス） =====
@@ -414,16 +444,19 @@ async function main() {
           [q(id, '意思決定能力を確かめる（→ 4-5）')],
         ],
       },
-    ], { ...K12, y: Y0, bottom: r3(ey - GAP), widths: [w1, r3(BW - GAP - w1)] });
+    ], { ...K12, y: Y0_T, bottom: r3(ey - GAP), widths: [w1, r3(BW - GAP - w1)] });
   }
 
-  // 詰める 2 列カード（S5・S6。行送り 1.1 em）
-  const K11 = { em: 1.1, padTop: 0.03, padBottom: 0.07, titleGap: 0.02, dotY: 0.19, maxGap: 0.12 };
+  // 詰める 2 列カード（S5・S6。行送り 1.1 em）。下余白は文字枠から 0.065in（メイリオの字面から約 0.11in）
+  const K11 = { em: 1.1, padTop: 0.04, padBottom: 0.065, titleGap: 0.01, dotY: 0.19, maxGap: 0.12 };
 
   // ===== S5 術後せん妄：リスクと予防（2列カード + 強調ボックス） =====
-  // spec の文言のままでは 22pt で左右とも 11〜13 行（1.2 em で入るのは 8 行）。行送りを 1.1 em にし、
+  // spec の文言のままでは 22pt で左 11・右 10 行（1.2 em で入るのは 8 行）。行送りを 1.1 em にし、
   // 強調ボックスを 1 行（22pt）にして各カード 10 行まで入れる。そのために 2 か所を短くした（alt()）。
-  // 左のカード 16 字・右のカード 17 字（全角換算）の幅。
+  // 左のカード 16 字・右のカード 17 字（全角換算）の幅（右は「多因子の非薬物的介入（強い推奨）：」が 17 字、
+  // 左を 17 字以上にすると右の項目が 2 行ずつ増える）。
+  // 左のカードで外すのは「（ESAIC）」ではなく「（高齢者評価）」にした（MMSE 25 未満は ESAIC の閾値で、
+  // S4 の MMSE 23 点以下と目的が違うことをスライド面で示すため。高齢者評価の項目も ESAIC の推奨にある）。
   {
     const id = 'S5';
     const s = slide(id);
@@ -432,16 +465,18 @@ async function main() {
     emphBox(s, { y: ey, h: EH, size: 22,
       lines: [mark(alt(id, '半数以上が見逃される（低活動型）。回復室を出る前と病棟でスクリーニングする',
         '半数以上が見逃される（低活動型）。回復室を出る前と病棟でスクリーニング',
-        '22pt・全幅で 1 行に収め、カードに 1 行ぶんの高さを空けるため、末尾の「する」を外して体言止めにした'),
-      ['半数以上が見逃される', RED])] });
+        '22pt・全幅で 1 行に収め、カードに 1 行ぶんの高さを空けるため、末尾の「する」を外して体言止めにした。' +
+        '元の文言は全角換算 37 字で、22pt・全幅（12.23in）の 1 行に入るのは 35 字まで。2 行にするとカードが各 9 行になり項目が入らない'),
+      ['半数以上が見逃される', RED, RED_U])] });
     const w1 = cardWFor(16.0);
     cardRow(s, [
       {
         title: q(id, 'リスク因子'), titleColor: BLUE,
         items: [
-          altBrk(id, '高齢、ASA-PS 3 以上、Charlson 2 超、MMSE 25 未満（ESAIC）', '高齢、ASA-PS 3 以上、Charlson 2 超、MMSE 25 未満',
-            '左のカードが 1 行あふれるため、出典の付記「（ESAIC）」を外した。ESAIC は右のカードの見出し・出典行・ノートにある', 'Charlson'),
-          brk(id, 'フレイル、感覚障害、低栄養、多剤、貧血、社会的因子（高齢者評価）', '多剤', '（高齢者'),
+          brk(id, '高齢、ASA-PS 3 以上、Charlson 2 超、MMSE 25 未満（ESAIC）', 'Charlson', 'MMSE'),
+          altBrk(id, 'フレイル、感覚障害、低栄養、多剤、貧血、社会的因子（高齢者評価）', 'フレイル、感覚障害、低栄養、多剤、貧血、社会的因子',
+            '左のカードが 1 行あふれる（11 行）ため、付記「（高齢者評価）」を外した。「多剤、貧血、社会的因子（高齢者評価）」は 18 字で' +
+            '左のカード（16 字）の 1 行に入らない。ノートに「老年医学的評価（スライドの「高齢者評価」）」とある', '多剤'),
           brk(id, 'せん妄の既往、アルコール多飲、ベンゾジアゼピン、全身麻酔の手術（国内の加算）', 'ベンゾ', '（国内'),
           (() => { const l = brk(id, '大腿骨近位部骨折 35〜65%、大手術 20〜40%', '大手術'); return [mark(l[0], ['35〜65%', VER]), mark(l[1], ['20〜40%', VER])]; })(),
         ],
@@ -452,20 +487,24 @@ async function main() {
           (() => { const l = brk(id, '多因子の非薬物的介入（強い推奨）：見当識、睡眠、早期離床、眼鏡・補聴器、水分・栄養、鎮痛、薬の見直し、酸素化、便秘', '見当識', '眼鏡', '薬の見直し'); return [mark(l[0], ['多因子の非薬物的介入', VER]), l[1], l[2], l[3]]; })(),
           [mark(q(id, 'せん妄のオッズ 44% 減（メタ解析）'), ['44% 減', VER])],
           [mark(q(id, '老年科医の関与 32% 対 50%（骨折）'), ['32% 対 50%', VER])],
-          (() => { const l = brk(id, '予防薬は勧めない（ESAIC 弱）。抗精神病薬は根拠不十分、コリンエステラーゼ阻害薬は始めない（AGS 強）', '抗精神病薬', 'コリン', '始めない'); return [mark(l[0], ['予防薬は勧めない', RED]), l[1], l[2], l[3]]; })(),
+          (() => { const l = brk(id, '予防薬は勧めない（ESAIC 弱）。抗精神病薬は根拠不十分、コリンエステラーゼ阻害薬は始めない（AGS 強）', '抗精神病薬', 'コリン', '始めない'); return [mark(l[0], ['予防薬は勧めない', RED, RED_U]), l[1], l[2], l[3]]; })(),
         ],
       },
     ], { ...K11, y: Y0_T, bottom: r3(ey - GAP), widths: [w1, r3(BW - GAP - w1)] });
   }
 
   // ===== S6 避ける薬と麻酔の調節（2列カード + 強調ボックス） =====
-  // spec の文言のままでは 22pt で左 12 行・右 10 行（1.2 em で入るのは 8 行）。行送りを 1.1 em にして各カード 9 行まで
-  // 入れ、薬剤名・数値を落とさずに 4 か所を短くした（alt()）。左のカード 18 字・右のカード 15 字（全角換算）の幅。
+  // spec の文言のままでは 22pt・下の幅で左 11 行・右 11 行（1.2 em で入るのは 8 行）。
+  // 行送りを 1.1 em にして各カード 9 行まで入れ、薬剤名・数値を落とさずに 4 か所を短くした（alt()）。
+  // 左のカード 18 字・右のカード 15 字（全角換算）の幅（左は「抗コリン：スコポラミン、アトロピン、」と
+  // 「（ファモチジンも）、メトクロプラミド」が 18 字。右を 16 字にすると左の項目が 3 行に割れる）。
+  // 強調ボックス（2 行）の高さは、カード 9 行と下余白をとった残り（約 0.8in）。
   {
     const id = 'S6';
     const s = slide(id);
     const emLines = brk(id, '常用薬 5〜6 剤以上は転倒・有害事象が増える。お薬手帳で睡眠薬・抗コリン薬・市販薬まで確認', 'お薬手帳');
-    const em = emphTight(s, { yBottom: BOTTOM, em: K11.em, lineColor: C.teal,
+    const EH6 = 0.799;
+    const em = emphTight(s, { yBottom: BOTTOM, em: K11.em, lineColor: C.teal, h: EH6,
       lines: [mark(emLines[0], ['5〜6 剤以上', VER]), mark(emLines[1], ['お薬手帳', BLUE])] });
     const w1 = cardWFor(18.0);
     cardRow(s, [
@@ -490,8 +529,10 @@ async function main() {
           [mark(alt(id, 'ベースラインに対する相対的低血圧を避ける。正常体温', '相対的低血圧を避ける。正常体温',
             '右のカードが 1 行あふれるため「ベースラインに対する」を外した（まとめ S8 と同じ言い方。ノートに「ベースラインからみた相対的な低血圧」とある）'),
           ['相対的低血圧', VER])],
-          altBrk(id, '鎮静の少ない多角的鎮痛。区域麻酔そのものではせん妄は減らない', '鎮静の少ない多角的鎮痛。区域麻酔ではせん妄は減らない',
-            '右のカードが 1 行あふれるため「そのもの」を外した', '区域麻酔'),
+          altBrk(id, '鎮静の少ない多角的鎮痛。区域麻酔そのものではせん妄は減らない', '鎮静の少ない多角的鎮痛。区域麻酔自体でせん妄は減らない',
+            '右のカードが 1 行あふれるため「そのものでは」を同じ意味の「自体で」にした。「区域麻酔そのものではせん妄は減らない」は' +
+            ' 18 字で右のカード（15 字）の 1 行に入らない。「そのもの」を外すと主張が強くなる（区域麻酔ではせん妄は減らない）ので、' +
+            '区域麻酔という選択だけでは減らないという意味は残した', '区域麻酔'),
         ],
       },
     ], { ...K11, y: Y0_T, bottom: r3(em.y - GAP), widths: [w1, r3(BW - GAP - w1)] });
@@ -522,7 +563,7 @@ async function main() {
       mark(q(id, '年齢だけでなく CFS を病前で。4 以上は注意、5 以上はフレイル'), ['CFS を病前で', BLUE]),
       mark(q(id, '65 歳超は全員 Mini-Cog。陽性なら家族に説明し能力を確かめる'), ['全員 Mini-Cog', BLUE]),
       mark(q(id, 'せん妄は大手術で 20〜40%、半数以上を見逃す。多因子介入で予防'), ['多因子介入で予防', VER]),
-      mark(q(id, '薬で予防しない。ベンゾジアゼピン・抗コリン薬・ペチジンを避ける'), ['予防しない', RED]),
+      mark(q(id, '薬で予防しない。ベンゾジアゼピン・抗コリン薬・ペチジンを避ける'), ['予防しない', RED, RED_U]),
       mark(q(id, 'MAC は 10 歳で 6% 低下。相対的低血圧を避け、鎮静の少ない鎮痛'), ['10 歳で 6% 低下', VER]),
     ], { y: 2.0, size: 24, gap: 32 });
   }
