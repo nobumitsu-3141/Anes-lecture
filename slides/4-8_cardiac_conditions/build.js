@@ -133,21 +133,27 @@ const runText = l => (Array.isArray(l) ? l.map(r => (typeof r === 'string' ? r :
 const toRuns = l => (Array.isArray(l) ? l : [l]).map(r => (typeof r === 'string' ? { text: r } : r));
 
 // ---------------------------------------------------------------------------
-// 出典: spec の sources 行を 16pt・幅 11.6in の 2 行に収める（4-7 と同じ手順）
+// 出典: spec の sources 行を 16pt・幅 11.6in の 2 行に収める
 //  0) ライブラリ既定（' / ' の区切りでだけ改行）で 2 行に入ればそのまま渡す。
 //  1) 文言はそのままで、文献の途中の語の切れ目で改行する（区切り > 著者「et al.」の後 > 誌名と年の間 > その他の空白）。
 //     数値と単位（「2022 年」など）の間では切らない。
-//  2) 入らなければ区切りの前後の空白を詰める（' / ' → '/'）。
-//  3) それでも入らなければ（）内の補足を後ろの文献から外す。
-//  4) それでも入らないときだけ、JCS 2022 の長い表題を最小限短くする（文献は落とさない。DEVIATIONS に記録）。
+//  2) JCS 2022 の表題（全角 40 字超）を含む出典は、区切りの空白を詰めても（）内の補足を外しても 2 行に入らない
+//     （S5: Hawn＋Thompson だけで 11.76in > 11.6in、表題単独で 10.99in）。表題の短縮が避けられないので、
+//     区切り ' / ' と（2024 AHA/ACC）は spec のまま残し、表題だけを略称にする（QA 指摘: 区切りの詰めと補足の削除をやめる）。
+//     略称は表題を含む全スライド（S5・S8）で同じものを使う（JCS_ABBR）。改行は区切りか「et al.」の後だけ（誌名と年の間では切らない）。
+//  3) それでも入らないときだけ、区切りの前後の空白を詰める（' / ' → '/'）→（）内の補足を後ろの文献から外す。
+//  短縮・変更はすべて DEVIATIONS に記録する。文献そのものは落とさない。
 // ---------------------------------------------------------------------------
 const SRC = LAYOUT.source;
 const DEVIATIONS = [];
 const NOTES_LOG = [];
 const JCS_FULL = '日本循環器学会 2022 年改訂版 非心臓手術における合併心疾患の評価と管理に関するガイドライン';
+// 略称の候補（長い順）。表題を含む全スライドで 2 行に入る最も長いものを使う。
+//  最後の候補「JCS 2022 非心臓手術ガイドライン」は spec の notes（S3・S5）と S5 本文の「JCS 2022」に合わせた表記。
 const JCS_SHORT = [
   '日本循環器学会 2022 年改訂版 非心臓手術における合併心疾患ガイドライン',   // 「の評価と管理に関する」を外す（4-7 と同じ）
   '日本循環器学会 2022 年改訂版 非心臓手術ガイドライン',
+  'JCS 2022 非心臓手術ガイドライン',
 ];
 function libLines(items) {
   const lines = [];
@@ -158,8 +164,11 @@ function libLines(items) {
   }
   return lines;
 }
-/** 項目 items を sep でつないだ文字列を 2 行に分ける。区切りの位置（文献の境目）か、文献の中の空白で切る */
-function split2(items, sep) {
+/**
+ * 項目 items を sep でつないだ文字列を 2 行に分ける。区切りの位置（文献の境目）か、文献の中の空白で切る。
+ * maxRank: 使ってよい切れ目の種類の上限（0 区切り / 1「et al.」の後 / 2 誌名と年の間 / 3 その他の空白）
+ */
+function split2(items, sep, maxRank = 3) {
   const str = items.join(sep);
   const bounds = new Set();
   let pos = 0;
@@ -180,12 +189,27 @@ function split2(items, sep) {
       else rank = 3;
     } else continue;
     a = a.trim(); b = b.trim();
-    if (a && b && fitsLine(a) && fitsLine(b)) cands.push({ a, b, rank });
+    if (rank <= maxRank && a && b && fitsLine(a) && fitsLine(b)) cands.push({ a, b, rank });
   }
   if (!cands.length) return null;
   cands.sort((x, y) => x.rank - y.rank || y.a.length - x.a.length);
   return [cands[0].a, cands[0].b];
 }
+/** 区切り ' / ' のまま 2 行に組む（ライブラリ既定 → 区切りか「et al.」の後での改行）。入らなければ null */
+function lines2(items, maxRank) {
+  if (libLines(items).length <= 2) return { lines: items, lib: true };
+  const r = split2(items, ' / ', maxRank);
+  return r ? { lines: r, lib: false } : null;
+}
+/** JCS 2022 の表題の略称（表題を含む全スライドで 2 行に入る最も長い候補。デッキで 1 つに揃える） */
+const JCS_ABBR = (() => {
+  const ids = Object.keys(SPEC).filter(id => SPEC[id].sources && SPEC[id].sources.split(' / ').includes(JCS_FULL));
+  if (!ids.length) return null;
+  for (const short of JCS_SHORT) {
+    if (ids.every(id => lines2(SPEC[id].sources.split(' / ').map(it => (it === JCS_FULL ? short : it)), 1))) return short;
+  }
+  return null;
+})();
 function sourcesFor(id) {
   const spec = SPEC[id] && SPEC[id].sources;
   if (!spec) return undefined;
@@ -193,6 +217,17 @@ function sourcesFor(id) {
   if (libLines(items).length <= 2) return items;
   let r = split2(items, ' / ');
   if (r) { NOTES_LOG.push(`${id} 出典: 文献の途中（「${r[0].slice(-14)}」の後）で改行（文言はそのまま）`); return r; }
+  // 2) JCS 2022 の表題だけを略称にする（区切り ' / ' と（）内の補足は spec のまま）
+  if (JCS_ABBR && items.includes(JCS_FULL)) {
+    const ab = items.map(it => (it === JCS_FULL ? JCS_ABBR : it));
+    const x = lines2(ab, 1);
+    if (x) {
+      if (!x.lib) NOTES_LOG.push(`${id} 出典: 文献の途中（「${x.lines[0].slice(-14)}」の後）で改行`);
+      DEVIATIONS.push(`${id} 出典: 「${JCS_FULL}」→「${JCS_ABBR}」（spec のままでは 16pt 2 行に入らないため。` +
+        `略称は spec の notes と本文の表記に合わせ、S5・S8 で統一。区切り ' / ' と（）内の補足はそのまま。文献は落としていない）`);
+      return x.lines;
+    }
+  }
   r = split2(items, '/');
   if (r) { DEVIATIONS.push(`${id} 出典: 区切りの前後の空白を詰めた（' / ' → '/'）`); return r; }
   // 3) （）内の補足を後ろの文献から 1 つずつ外す（stages[n] = n 個外した状態）
@@ -365,24 +400,30 @@ function listCard(s, o) {
   return itemTable(s, c.items, { x: ix, y: by, w: iw, h: bh, size: c.size, lsEm: c.lsEm, gap: c.gap, indent: c.indent });
 }
 /**
- * 2 列カード。幅は各カードの最長行に合わせ、余りを等分。高さは h（省略時は高い方に合わせる）。
- * 低い方は余った高さを項目の間に配る。戻り値: カードの下端
+ * 2 列カード。幅は各カードの最長行に合わせ、余りを配る（leftShare: 左に配る割合。既定は等分）。
+ * 高さは h（省略時は高い方に合わせる）。
+ * 項目の間隔は左右で同じ値にそろえる（高い方のカードに入る分だけ広げる）。余った高さはカードの下の余白になる。
+ * 戻り値: カードの下端
  */
-function twoCards(s, id, L, R, y, h, G = 0.25) {
+function twoCards(s, id, L, R, y, h, G = 0.25, leftShare = 0.5) {
   const wl = listCardNeedW(L), wr = listCardNeedW(R);
   const slack = BW - G - wl - wr;
   if (slack < 0) throw new Error(`${id}: 2 列カードの幅が ${r3(-slack)}in 足りません`);
-  const wL = r3(wl + slack / 2), wR = r3(BW - G - wL);
+  const wL = r3(wl + slack * leftShare), wR = r3(BW - G - wL);
   const ch = h != null ? h : r2(Math.max(listCardNeed(L), listCardNeed(R)) + 0.01);
-  const spread = c => {
+  if ((L.gap || 0) !== (R.gap || 0)) throw new Error(`${id}: 左右のカードで項目間隔の初期値が違います`);
+  // 左右とも同じだけ広げられる量（pt、0.1pt 単位で切り捨て）
+  const room = c => {
     const n = normItems(c.items).length;
-    const free = ch - listCardNeed(c);
-    return n > 1 && free > 0.01 ? { ...c, gap: (c.gap || 0) + Math.floor(free / (n - 1) * 72 * 10) / 10 } : c;
+    return n > 1 ? Math.max(0, Math.floor((ch - listCardNeed(c)) / (n - 1) * 72 * 10) / 10) : Infinity;
   };
-  const Ls = spread(L), Rs = spread(R);
+  const add = Math.min(room(L), room(R));
+  const widen = c => (Number.isFinite(add) && add > 0 ? { ...c, gap: (c.gap || 0) + add } : c);
+  const Ls = widen(L), Rs = widen(R);
   listCard(s, { ...Ls, x: X0, y, w: wL, h: ch });
   listCard(s, { ...Rs, x: r3(XR - wR), y, w: wR, h: ch });
-  console.log(`  ${id}: カード幅 ${wL} / ${wR}（余り ${r3(slack)}）、h ${ch}（必要 ${r3(listCardNeed(L))} / ${r3(listCardNeed(R))}、` +
+  console.log(`  ${id}: カード幅 ${wL} / ${wR}（余り ${r3(slack)}、文字幅 ${r3(wL - 2 * (L.padX || CARD.padX))} / ${r3(wR - 2 * (R.padX || CARD.padX))}）、` +
+    `h ${ch}（必要 ${r3(listCardNeed(Ls))} / ${r3(listCardNeed(Rs))}、下の余り ${r3(ch - listCardNeed(Ls))} / ${r3(ch - listCardNeed(Rs))}、` +
     `項目間 ${Ls.gap} / ${Rs.gap}pt）`);
   return r3(y + ch);
 }
@@ -620,7 +661,7 @@ async function main() {
       ],
     };
     const R = {
-      ...cardBase, title: q(id, '心房細動'), titleColor: C.vermilion,
+      ...cardBase, title: q(id, '心房細動'), titleColor: C.blue,   // 項目名なので青（橙は警告・危険だけに使う）
       items: [
         { lines: brk(id, '心拍数 100 超は術前に薬で整える', '術前') },
         { lines: brk(id, '新規の心房細動は術後に外来フォローと血栓リスク評価（I）', '外来', '血栓') },

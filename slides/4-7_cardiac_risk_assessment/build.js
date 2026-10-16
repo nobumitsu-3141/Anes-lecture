@@ -229,7 +229,7 @@ const BW = XR - X0;              // 12.23
 const TOP = 1.85;                // 本文の上端
 const TOP_T = 1.82;              // 表の上端（金下線 8pt の下端 1.576in から 0.24in 以上。4-10・4-12 と同じ）
 const BOT = 6.46;                // 出典 2 行（枠 y6.5）のときの本文下端（全スライド出典 2 行）
-const ZONE_BOT = 6.47;           // 表の下端の上限（出典 2 行の枠 y6.5 の 0.03in 上。4-10 と同じ）
+const ZONE_BOT = 6.44;           // 表の下端の上限（出典 2 行は枠 y6.5・下揃えで、メイリオ 16pt の文字の上端が約 6.68in。その 0.24in 上）
 const GAP = 0.24;                // 要素間の最小間隔（0.6cm）
 // 表のセル余白（pt: 上, 右, 下, 左）。行間を固定値（1.2 em）にすると字面が行の上に寄り、字の下に約 3pt の空きが残る
 // （描画で実測: 上下とも 1pt の余白で、上の罫線まで 2.2pt・下の罫線まで 4.0pt）。上を厚く下を薄くして、
@@ -437,6 +437,28 @@ function flowArrow(s, x1, y, x2, o = {}) {
   s.polyline([[x2, y], [bx, y - hw / 2], [bx, y + hw / 2]], { color, width: 1, closed: true, fill: color });
 }
 
+/**
+ * 行頭記号（•）の色を本文色 262626 に固定する（buClr）。pptxgenjs は buClr を出せず、記号の色が行頭の run の色
+ * （S7「例外：」の青、S8「93% は無症状」の橙など）になってしまうため、書き出した XML に足す。
+ * deck.pptx.write を包み、decklib の後処理（postProcess）の前に適用する。buClr は buSzPct の直前（スキーマの順）。
+ */
+function fixBulletColor(deck) {
+  const JSZip = require('jszip');
+  const write = deck.pptx.write.bind(deck.pptx);
+  deck.pptx.write = async opts => {
+    const zip = await JSZip.loadAsync(await write(opts));
+    let n = 0;
+    for (const name of Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f))) {
+      const x = await zip.file(name).async('string');
+      const y = x.replace(/<a:buSzPct val="100000"\/><a:buChar /g, m => { n++; return `<a:buClr><a:srgbClr val="${C.dark}"/></a:buClr>${m}`; });
+      zip.file(name, y);
+    }
+    if (!n) throw new Error('fixBulletColor: 行頭記号が見つかりません');
+    console.log(`  行頭記号の色を ${C.dark} に固定（${n} 段落）`);
+    return zip.generateAsync({ type: 'nodebuffer' });
+  };
+}
+
 /** spec の見出し行（ch=・title=）と一致するスライドを作る */
 function specSlide(deck, id, o = {}) {
   const sp = SPEC[id];
@@ -451,6 +473,7 @@ async function main() {
     author: 'Anes-lecture',
     deckTitle: '4-7 心血管リスク評価の手順',
   });
+  fixBulletColor(deck);
 
   // ===== S1 表紙 =====
   {
@@ -556,19 +579,19 @@ async function main() {
     // 1 列目を 4.41in に広げて全因子を 1 行にする（2 列目 7.79in でも中身は 1〜2 行のまま。合計 12.2in）。
     // 表（9 行ぶん）は上端 TOP_T・セル余白 TM（字と罫線の間 上下とも約 0.05in）。
     const t = tightTable(s, rows, { x: X0, y: TOP_T, colW: [4.41, 7.79], margin: TM, round: 0.001 });
-    // 下の 1 行（全角 41 字ぶんで 2 行に割れる。「（Lee」の前で改行）は 22pt。表の下 0.24in から本文下端までを使い、
-    // 行間はその高さに入る最大（0.8〜1.0）にする（2 行が詰まって見えないように）。
+    // 下の 1 行（全角 41 字ぶんで 2 行に割れる）は 22pt。「（Lee 1999 検証群）。近年は 3.9〜15%」を独立した 2 行目の段落にし、
+    // 表の下 0.24in から本文下端までの高さで、行間 0.8 のまま 2 段落の間（段落後）をできるだけ空ける（2 行が詰まって見えないように）。
     const line = brk(id, '主要心合併症：0 点 0.4%、1 点 0.9%、2 点 7%、3 点以上 11%（Lee 1999 検証群）。近年は 3.9〜15%', '（Lee');
-    const items = [{ lines: markLines(line, { 1: [['近年は 3.9〜15%', C.vermilion]] }) }];
-    const size = 22;
+    const items = markLines(line, { 1: [['近年は 3.9〜15%', C.vermilion]] }).map(l => ({ lines: [l] }));
+    const size = 22, ls = 0.8;
     const ly = r3(t.y + t.h + GAP);
     const lh = r3(BOT - ly);
-    const ls = Math.min(1, Math.floor((lh - 0.005) / (line.length * size / 72 * MEIRYO_EM) * 100) / 100);
-    if (ls < 0.8) throw new Error(`${id}: 下の 1 行の行間 ${ls} < 0.8（表が高すぎます）`);
-    itemText(s, items, { size, ls, gap: 0, marker: false, x: X0, y: ly, w: BW, h: lh });
+    const gap = Math.min(12, Math.floor((lh - itemTextH(items, { size, ls, gap: 0 })) * 72 * 10) / 10);
+    if (gap < 3) throw new Error(`${id}: 下の 1 行の 2 行の間 ${gap}pt < 3pt（表が高すぎます）`);
+    itemText(s, items, { size, ls, gap, marker: false, x: X0, y: ly, w: BW, h: lh });
     assertBottom(id, '表', t.y + t.h, ZONE_BOT);
     assertBottom(id, '下の 1 行', ly + lh);
-    console.log(`  ${id}: 表 ${t.y}〜${r3(t.y + t.h)}（行高 ${t.rowH.join(', ')}）、下の 1 行 ${size}pt 行間 ${ls} ${ly}〜${r3(ly + lh)}`);
+    console.log(`  ${id}: 表 ${t.y}〜${r3(t.y + t.h)}（行高 ${t.rowH.join(', ')}）、下の 1 行 ${size}pt 行間 ${ls}＋段落間 ${gap}pt ${ly}〜${r3(ly + lh)}`);
   }
 
   // ===== S5 METs と DASI で測る（2 列カード + 強調ボックス） =====
@@ -624,14 +647,16 @@ async function main() {
         cell('上昇リスク手術で運動耐容能が不良・不明、結果で管理が変わる（2b）', '運動耐容能', '結果で'),
         cell('低リスク手術・低リスク患者・機能良好には行わない（3）', '低リスク患者', '機能良好')],
     ];
-    // 列幅: spec の目安 2.4 / 5.4 / 4.4 では「JCS は 4 METs 未満・不明で（IIb）」「機能良好には行わない（3）」で
-    // 行数が増え本文ゾーンに入らない。表の高さが最小（12 行ぶん）になる配分に見直した（合計 12.2in）。
-    // 1 列目は最長の「NT-proBNP」（推定 1.73in）が入る 2.0in まで詰め、2 列目「65 歳以上など（AHA 2a）。JCS は」
-    // （推定 5.30in）に 0.26in の余裕を持たせる（2.25 / 5.48 では余裕 0.01in で、描画で折り返して 4 行になった）。
-    // 12 行（行送り 1.2 em）を本文ゾーン（1.85〜6.46in）に入れるため、セルの上下余白を 1pt にする（4-9 の S8 と同じ）。
-    const t = tightTable(s, rows, { x: X0, y: TOP, colW: [2.0, 5.73, 4.47], margin: [1, 6, 1, 6] });
-    assertBottom(id, '表', t.y + t.h);
-    console.log(`  ${id}: 表 ${t.y}〜${r2(t.y + t.h)}（行高 ${t.rowH.join(', ')}）`);
+    // 列幅: spec の目安 2.4 / 5.4 / 4.4 では、行 1 の 2 列目がどこで割っても 4 行になる
+    // （「JCS は 4 METs 未満・不明で（IIb）」は推定 5.60in、「65 歳以上など（AHA 2a）。JCS は」は 5.30in で、
+    // どちらも 5.4in 列の使える幅 5.23in を超える）。行 4 の 3 列目「機能良好には行わない（3）」（4.30in）も 4.4in 列に入らない。
+    // 表の高さが最小（12 行ぶん）になる配分に見直した（合計 12.2in）。3 列目は「機能良好には行わない（3）」が入る 4.47in、
+    // 1 列目は「NT-proBNP」（推定 1.73in）が入る 2.0in。2 列目 5.73in は、「JCS は」から始まる行（5.60in）が入る幅
+    // （5.77in 以上）には届かないため、行 1 は「。JCS は」の後で割り、最長の行（5.30in）に 0.26in の余裕を残す。
+    // 12 行（行送り 1.2 em）を上端 TOP_T・セル余白 TM で本文ゾーン（〜6.47in）に入れる。
+    const t = tightTable(s, rows, { x: X0, y: TOP_T, colW: [2.0, 5.73, 4.47], margin: TM, round: 0.001 });
+    assertBottom(id, '表', t.y + t.h, ZONE_BOT);
+    console.log(`  ${id}: 表 ${t.y}〜${r3(t.y + t.h)}（行高 ${t.rowH.join(', ')}）`);
   }
 
   // ===== S7 血行再建とステント後（箇条書き 4 行 + 強調ボックス） =====
@@ -664,7 +689,8 @@ async function main() {
       mark(q(id, 'MINS：術中〜術後 30 日の心筋傷害。45 歳以上の入院手術の 8〜18%'), ['8〜18%', C.blue]),
       mark(q(id, '93% は無症状。胸痛がないから大丈夫、ではない'), ['93% は無症状', C.vermilion]),
       q(id, 'hs-TnT 20〜65 ng/L で 5 以上の上昇、または 65 以上（VISION）'),
-      mark(q(id, '30 日死亡：20〜65 で 3%、65〜1,000 で 9%、1,000 以上で 30%'), ['3%', C.blue], ['9%', C.vermilion], ['30%', C.red]),
+      // 3 値は青・黒・赤（いずれも太字）。橙と赤は色覚によって近く見えるので並べない
+      mark(q(id, '30 日死亡：20〜65 で 3%、65〜1,000 で 9%、1,000 以上で 30%'), ['3%', C.blue], ['9%', C.dark], ['30%', C.red]),
       q(id, 'ESC：65 歳以上・心疾患などの中〜高リスク手術で術前・術後（I）'),
     ];
     const size = 24, gap = 10, by0 = 1.9;
