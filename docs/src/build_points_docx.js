@@ -38,7 +38,7 @@ const children = [];
 children.push(new Paragraph({ children: [run(data.chapter, { size: 44, bold: true, color: GOLD })], spacing: { before: 2400, after: 200 }, alignment: AlignmentType.CENTER }));
 children.push(new Paragraph({ children: [run(data.subtitle, { size: 28, color: GRAY })], spacing: { after: 200 }, alignment: AlignmentType.CENTER }));
 children.push(new Paragraph({ children: [run('初期研修医向け麻酔講義（離島の一人麻酔科医による）', { size: 22, color: GRAY })], alignment: AlignmentType.CENTER, spacing: { after: 400 } }));
-children.push(new Paragraph({ children: [run('講義の番号・タイトル・数値は各講義のスライド（spec.md）と同じです。原典に到達できなかった箇所は【要確認】と記しています。', { size: 20, color: GRAY })], alignment: AlignmentType.CENTER }));
+children.push(new Paragraph({ children: [run(data.cover_note || '講義の番号・タイトル・数値は各講義のスライド（spec.md）と同じです。原典に到達できなかった箇所は【要確認】と記しています。', { size: 20, color: GRAY })], alignment: AlignmentType.CENTER }));
 children.push(new Paragraph({ children: [new PageBreak()] }));
 // この章について
 children.push(new Paragraph({ text: 'この章について', heading: HeadingLevel.HEADING_1 }));
