@@ -52,7 +52,7 @@
     {
       "item": "喉頭痙攣",
       "value": "頻度 約 0.87%（136,929 例）。AIMS 189 件：明らか 77%、閉塞として 14%、SpO2 低下 60% 超、徐脈 6%（1 歳未満 23%）、肺水腫 4%、誤嚥 3%。プロポフォール 0.25〜0.8 mg/kg（0.8 mg/kg で 13 例中 10 例解除）。スキサメトニウム［海外］静注 1〜2 mg/kg（0.1〜0.5 mg/kg の少量でよいとする資料も）、筋注 4 mg/kg（3〜4 mg/kg とする資料も）。［国内添付文書］小児 静注 1 mg/kg・静注不能時 筋注 2〜3 mg/kg、成人 1 回 10〜60 mg 静注。アトロピン 0.02 mg/kg",
-      "source": "Olsson GL, Hallen B. Acta Anaesthesiol Scand 1984;28:567-575／Visvanathan T, et al. Qual Saf Health Care 2005;14:e3／Afshan G, et al. Paediatr Anaesth 2002;12:625-628／Hampson-Evans D, et al. Paediatr Anaesth 2008;18:303-307／APAGBI（英国・アイルランド小児麻酔科学会）hot topic（スキサメトニウム）／丸石製薬 スキサメトニウム注「マルイシ」添付文書（2023 年 5 月改訂）【要確認: Hampson-Evans 2008 のアルゴリズム図の静注・筋注量と、PMDA のスキサメトニウム注「マルイシ」電子添文「6. 用法及び用量」の小児量（静注 1 mg/kg、筋注 2〜3 mg/kg）の原文】"
+      "source": "Olsson GL, Hallen B. Acta Anaesthesiol Scand 1984;28:567-575／Visvanathan T, et al. Qual Saf Health Care 2005;14:e3／Afshan G, et al. Paediatr Anaesth 2002;12:625-628／Hampson-Evans D, et al. Paediatr Anaesth 2008;18:303-307／APAGBI（英国・アイルランド小児麻酔科学会）hot topic（スキサメトニウム）／丸石製薬 スキサメトニウム注「マルイシ」添付文書（2023 年 5 月改訂 第 1 版。乳幼児・小児は静注 1 mg/kg、静注できなければ筋注 2〜3 mg/kg と 6 項に記載）【要確認: Hampson-Evans 2008 のアルゴリズム図の静注・筋注量】"
     },
     {
       "item": "陰圧性肺水腫",
@@ -79,10 +79,10 @@
     "抜管後喉頭浮腫を NIV・HFNC（high-flow nasal cannula：高流量鼻カニュラ酸素）で粘る。早めに細いチューブで再挿管。",
     "レミフェンタニル中止後にラインの残液を急速に流す。AIDAA 表の 0.2〜0.4 µg/kg/分を自発呼吸下にそのまま使う。",
     "離島で at-risk 抜管を応援のない時間帯に行う。再挿管器具とスキサメトニウムを出しておかない。",
-    "定量的モニターなしにネオスチグミンで拮抗して、すぐ抜管する（ASA 2023 は、この場合に抜管まで少なくとも 10 分待つことを条件付きで推奨。二次資料による）。【要確認: DAS 2012 原文（Anaesthesia 2012;67:318-340）の手順の順序・レミフェンタニル法・Bailey 法、2025-JSA 抜管ガイドライン本文（anesth.or.jp の PDF）の各 MUST の判定基準とカフリーク・深麻酔下抜管・再挿管の推奨、ASA 2023 原文（Anesthesiology 2023;138:13-41）の 10 分待機の推奨文】"
+    "定量的モニターなしにネオスチグミンで拮抗して、すぐ抜管する（ASA 2023 は、この場合に抜管まで少なくとも 10 分待つことを条件付きで推奨。二次資料による）。【要確認: DAS 2012 原文（Anaesthesia 2012;67:318-340）の手順の順序・レミフェンタニル法・Bailey 法、ASA 2023 原文（Anesthesiology 2023;138:13-41）の 10 分待機の推奨文】"
   ],
   "sources": [
-    "日本麻酔科学会 2025-JSA 抜管から術後早期までの安全な気道管理のための臨床ガイドライン（2025 年 3 月理事会承認）／同 抜管から術後早期までの気道管理プラクティカルガイド【要確認: anesth.or.jp の PDF で発行年月と版（プラクティカルガイドのファイル名 2412 は 2024 年 12 月のパブリックコメント版の可能性）】",
+    "日本麻酔科学会 2025-JSA 抜管から術後早期までの安全な気道管理のための臨床ガイドライン（2024 年 12 月〜2025 年 1 月パブリックコメント、2025 年 3 月理事会承認）／同 抜管から術後早期までの気道管理プラクティカルガイド【要確認: プラクティカルガイドの発行年月と版（ファイル名 2412 は 2024 年 12 月のパブリックコメント版の可能性）】",
     "Popat M, et al. Difficult Airway Society guidelines for the management of tracheal extubation. Anaesthesia 2012;67:318-340",
     "Kundra P, et al. All India Difficult Airway Association 2025 guidelines for extubation of the “at-risk” airway. Indian J Anaesth 2025;69:1187-1207",
     "Thilen SR, et al. 2023 ASA practice guidelines for monitoring and antagonism of neuromuscular blockade. Anesthesiology 2023;138:13-41",

@@ -21,8 +21,8 @@
     },
     {
       "item": "作用時間（高比重ブピバカイン）",
-      "value": "添付文書 10〜20 mg（上限 20 mg＝4 mL）。15 mg で遮断 140〜160 分（定義不明）。国内：高比重 2 mL で鎮痛 318.9 分・運動 228.9 分。10.5〜12 mg（0.75%）：感覚完全回復 212±54 分、運動 200±45 分、自尿 416±96 分。等比重は運動 +45 分、感覚 +29 分",
-      "source": "マーカイン注脊麻用 0.5% 添付文書／Chambers WA, et al. Br J Anaesth 1981;53:279-282／Mahan MC, et al. Arthroplasty Today 2019;5:226-233／Uppal V, et al. Anesth Analg 2017;125:1627-1637／Shimai N, et al. Masui 1989;38:666-673【要確認: マーカイン注脊麻用 0.5% 高比重の電子添文 18.3「作用持続時間」の数値（PMDA）。必要ならインタビューフォームの臨床成績も】"
+      "value": "添付文書 10〜20 mg（上限 20 mg＝4 mL）。15 mg で遮断 140〜160 分（定義不明）。国内：高比重 2 mL で鎮痛 318.9 分・運動 228.9 分（Shimai 1989）。添付文書の国内試験（17.1.2）では高比重 2/3/4 mL で L2 の痛覚遮断 約 200/194/226 分、完全運動遮断 約 87/139/138 分。10.5〜12 mg（0.75%）：感覚完全回復 212±54 分、運動 200±45 分、自尿 416±96 分。等比重は運動 +45 分、感覚 +29 分",
+      "source": "マーカイン注脊麻用 0.5% 添付文書（2023 年 8 月改訂。18.3 はウサギの比較のみで、ヒトの持続時間は 17.1 の臨床成績）／Chambers WA, et al. Br J Anaesth 1981;53:279-282／Mahan MC, et al. Arthroplasty Today 2019;5:226-233／Uppal V, et al. Anesth Analg 2017;125:1627-1637／Shimai N, et al. Masui 1989;38:666-673"
     },
     {
       "item": "低血圧・徐脈（非産科 952 例）",
@@ -87,7 +87,7 @@
     "ASA/ASRA Practice guidelines for neuraxial opioid respiratory depression. Anesthesiology 2016;124:535-552",
     "Bauchat JR, et al. SOAP consensus statement. Anesth Analg 2019;129:458-474／Crowe G, et al. PROSPECT recommendations for elective caesarean section. Anaesthesia 2026;81:819-839",
     "Renard Y, et al. Br J Anaesth 2024;133:823-838／Gehling M, Tryba M. Anaesthesia 2009;64:643-651",
-    "日本ペインクリニック学会・日本麻酔科学会・日本区域麻酔学会 抗血栓療法中の区域麻酔・神経ブロックガイドライン 改訂第 2 版（日本麻酔科学会ウェブサイト 2026 年 7 月掲載）【要確認: 改訂第 2 版 PDF（anesth.or.jp/files/pdf/guideline_kouketsusen_shinkeiblock.pdf）の表紙・奥付に書かれた発行年月】",
+    "日本ペインクリニック学会・日本麻酔科学会・日本区域麻酔学会 抗血栓療法中の区域麻酔・神経ブロックガイドライン 改訂第 2 版（日本麻酔科学会ウェブサイト掲載。序の日付は令和 8 年〔2026 年〕7 月）",
     "マーカイン注脊麻用・モルヒネ塩酸塩注射液・ヱフェドリン注・ネオシネジンコーワ注・ナロキソン静注 添付文書（PMDA）"
   ]
 }
