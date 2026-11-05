@@ -41,8 +41,8 @@
     },
     {
       "item": "高カリウム血症（ILCOR 2025 反映）",
-      "value": "インスリン＋ブドウ糖（提案。推奨文に用量はなく、根拠の研究はインスリン 8〜12 単位、ERC 2021 は速効型 10 単位＋ブドウ糖 25 g）。カルシウム・重炭酸は根拠不十分。10% 塩化カルシウム 10 mL＝Ca 6.8 mmol、カルチコール 8.5% 10 mL＝Ca 約 1.9 mmol（約 3 割）",
-      "source": "Drennan IR, et al. ILCOR 2025 ALS CoSTR. Circulation 2025;152:S72-S115／Jessen MK, et al. Resuscitation 2025;208:110489／2025 韓国 CPR ガイドライン Part 5（Clin Exp Emerg Med 2026、ILCOR 2025 の要約）／Lott C, et al. ERC 2021 Special Circumstances. Resuscitation 2021;161:152-219（用量）【要確認: Lott 2021 本文の高カリウム血症の項で「10 単位＋25 g」の表記】／カルチコール注射液 添付文書"
+      "value": "インスリン＋ブドウ糖（ILCOR 2025 の提案。推奨文に用量はなく、根拠の研究はインスリン 8〜12 単位。ERC 2025 は中等度・重度の高カリウム血症に速効型インスリン 10 単位＋ブドウ糖 25 g 静注、投与前の血糖が 7 mmol/L〈約 126 mg/dL〉未満なら続けて 10% ブドウ糖 50 mL/時を 5 時間）。カルシウム・重炭酸は ILCOR 2025 では根拠不十分。ERC 2025 は根拠不十分としつつ、高カリウム血症による心停止では 10% 塩化カルシウム 10 mL と炭酸水素ナトリウム 50 mmol を別ルートか間にフラッシュを挟んで投与するとしている。10% 塩化カルシウム 10 mL＝Ca 6.8 mmol、カルチコール 8.5% 10 mL＝Ca 約 1.9 mmol（約 3 割）",
+      "source": "Drennan IR, et al. ILCOR 2025 ALS CoSTR. Circulation 2025;152:S72-S115／Jessen MK, et al. Resuscitation 2025;208:110489／2025 韓国 CPR ガイドライン Part 5（Clin Exp Emerg Med 2026、ILCOR 2025 の要約）／Lott C, Karageorgos V, et al. ERC Guidelines 2025 Special Circumstances in Resuscitation. Resuscitation 2025;215 Suppl 1:110753（用量・心停止時の Ca と重炭酸）／カルチコール注射液 添付文書"
     },
     {
       "item": "頻度（国内）",
@@ -97,6 +97,7 @@
     "Caplan RA, et al. Anesthesiology 1988;68:5-11",
     "Levine RL, et al. N Engl J Med 1997;337:301-306",
     "アンカロン注 150・シンビット静注用・カルチコール注射液 添付文書（PMDA）",
-    "医療法 第 6 条の 10 第 1 項（医療事故調査・支援センターへの報告。第 2 項は遺族への事前説明。医療事故調査制度、2015 年 10 月施行）"
+    "医療法 第 6 条の 10 第 1 項（医療事故調査・支援センターへの報告。第 2 項は遺族への事前説明。医療事故調査制度、2015 年 10 月施行）",
+    "Lott C, Karageorgos V, et al. European Resuscitation Council Guidelines 2025 Special Circumstances in Resuscitation. Resuscitation 2025;215 Suppl 1:110753（高カリウム血症）"
   ]
 }
