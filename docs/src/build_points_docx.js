@@ -39,6 +39,7 @@ children.push(new Paragraph({ children: [run(data.chapter, { size: 44, bold: tru
 children.push(new Paragraph({ children: [run(data.subtitle, { size: 28, color: GRAY })], spacing: { after: 200 }, alignment: AlignmentType.CENTER }));
 children.push(new Paragraph({ children: [run('初期研修医向け麻酔講義（離島の一人麻酔科医による）', { size: 22, color: GRAY })], alignment: AlignmentType.CENTER, spacing: { after: 400 } }));
 children.push(new Paragraph({ children: [run(data.cover_note || '講義の番号・タイトル・数値は各講義のスライド（spec.md）と同じです。原典に到達できなかった箇所は【要確認】と記しています。', { size: 20, color: GRAY })], alignment: AlignmentType.CENTER }));
+if (data.decks.some(d => Array.isArray(d.summary) && d.summary.length)) children.push(new Paragraph({ children: [run('各講義の構成：ねらい → 要点（箇条書き） → 解説 → 覚える数値・基準 → 落とし穴 → 主な出典', { size: 20, color: GRAY })], alignment: AlignmentType.CENTER, spacing: { before: 200 } }));
 children.push(new Paragraph({ children: [new PageBreak()] }));
 // この章について
 children.push(new Paragraph({ text: 'この章について', heading: HeadingLevel.HEADING_1 }));
@@ -51,8 +52,18 @@ data.decks.forEach((d, i) => {
   children.push(new Paragraph({ text: `${d.id}　${d.title}`, heading: HeadingLevel.HEADING_1 }));
   children.push(sub('ねらい'));
   children.push(para(d.purpose));
+  if (Array.isArray(d.summary) && d.summary.length) {
+    children.push(sub('要点'));
+    d.summary.forEach(sm => children.push(new Paragraph({ children: [run(sm, { bold: true })], numbering: { reference: 'keypoints', level: 0, instance: i }, shading: { type: ShadingType.CLEAR, fill: 'F2F2F2', color: 'auto' }, spacing: { after: 60 } })));
+    children.push(sub('解説'));
+    d.points.forEach((p, k) => {
+      children.push(new Paragraph({ children: [run(`${k + 1}. ${d.summary[k]}`, { bold: true, color: BLUE, size: 21 })], keepNext: true, spacing: { before: 160, after: 60 } }));
+      children.push(new Paragraph({ children: [run(p)], indent: { left: 360 }, spacing: { after: 120, line: 300 } }));
+    });
+  } else {
   children.push(sub('ポイント'));
   d.points.forEach((p, k) => children.push(new Paragraph({ children: [run(p)], numbering: { reference: 'numbers', level: 0, instance: i }, spacing: { after: 80, line: 300 } })));
+  }
   if (d.numbers && d.numbers.length) { children.push(sub('覚える数値・基準')); children.push(numbersTable(d.numbers)); children.push(para('', { after: 40 })); }
   if (d.pitfalls && d.pitfalls.length) { children.push(sub('落とし穴')); d.pitfalls.forEach(p => children.push(bullet(p))); }
   if (d.sources && d.sources.length) { children.push(new Paragraph({ children: [run('主な出典：', { size: 18, bold: true, color: GRAY }), run(d.sources.join('／'), { size: 18, color: GRAY })], spacing: { before: 160, after: 40, line: 276 } })); }
@@ -61,6 +72,7 @@ data.decks.forEach((d, i) => {
 const numbering = { config: [
   { reference: 'bullets', levels: [{ level: 0, format: LevelFormat.BULLET, text: '•', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 480, hanging: 300 } } } }] },
   { reference: 'numbers', levels: [{ level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 480, hanging: 360 } } } }] },
+  { reference: 'keypoints', levels: [{ level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 480, hanging: 360 } } } }] },
 ] };
 
 const doc = new Document({
