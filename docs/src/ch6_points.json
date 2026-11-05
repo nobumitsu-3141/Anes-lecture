@@ -191,7 +191,7 @@
    "numbers": [
     {
      "item": "アトロピン（症候性徐脈）",
-     "value": "国内：0.5 mg 静注、持続すれば反復（JCS 2020・JRC 2015。JCS 2020 には反復の間隔と上限の記載なし。第 3 章の 3〜5 分ごと・総量 3 mg は JRC 2020 の成人 ALS 章には書かれていない。同章は徐脈治療薬を 2020 年未評価のトピックとしている）。AHA 2020/2025：1 mg を 3〜5 分毎、最大 3 mg。ERC 2025：500 µg を静注または骨髄内投与し、必要なら 3〜5 分ごとに反復して総量 3 mg まで（心臓移植後・脊髄損傷の徐脈にはアミノフィリン 100〜200 mg 緩徐静注）。0.5 mg 未満で奇異性徐脈。His 束以下のブロック・心臓移植後には無効（移植後は房室ブロック・洞停止を起こしうる）",
+     "value": "国内：0.5 mg 静注、持続すれば反復（JCS 2020・JRC 2015。JCS 2020 には反復の間隔と上限の記載なし。第 3 章の 3〜5 分ごと・総量 3 mg は JRC 2020 の成人 ALS 章には書かれていない。同章は徐脈治療薬を 2020 年未評価のトピックとしている）。AHA の成人徐脈アルゴリズム（算法図）：1 mg を 3〜5 分毎、最大 3 mg（Panchal 2020 の本文は推奨の強さだけで用量の記載なし）。ERC 2025：500 µg を静注または骨髄内投与し、必要なら 3〜5 分ごとに反復して総量 3 mg まで（心臓移植後・脊髄損傷の徐脈にはアミノフィリン 100〜200 mg 緩徐静注）。0.5 mg 未満で奇異性徐脈。His 束以下のブロック・心臓移植後には無効（移植後は房室ブロック・洞停止を起こしうる）",
      "source": "JCS/JHRS 2020 不整脈薬物治療ガイドライン（J Arrhythm 2022;38:833-973）／JRC 2015（Yokose 2025 の引用。JRC 2020 第 2 章は徐脈治療薬を未評価とし 2015 を据え置き）／Yokose M, et al. Circ Rep 2025;7:1044-1050（JRC タスクフォース）／Panchal AR, et al. Circulation 2020;142:S366-S468／Wigginton JG, et al. Circulation 2025;152:S538-S577（AHA 2025 Part 9）／Bernheim A, et al. Transplantation 2004;77:1181-1185（心臓移植後）【要確認: JRC 蘇生ガイドライン 2025 の成人徐脈の項（アトロピン初回量。ECC 補遺 3-4「症候性徐脈に対するアトロピン初回投与量」の推奨文）を、書籍（医学書院）または jrc-cpr.org で】／Soar J, et al. ERC Guidelines 2025 Adult ALS. Resuscitation 2025;215 Suppl 1:110769（要約の徐脈の項と本文の Bradycardia）【要確認: ERC 2025 Adult ALS の正誤表（Resuscitation 2026;229:111313）の内容。本文の第二選択薬の段落ではアドレナリンが「2〜10 mg/分」と単位が要約（µg/分）と食い違っている】"
     },
     {
@@ -878,8 +878,8 @@
     },
     {
      "item": "ROSC 後の目標",
-     "value": "SpO2 94〜98%、PaCO2 35〜45 mmHg。体温：ILCOR 2020 は 32〜36℃ を 24 時間以上。2025 年版は ERC/ESICM が 37.5℃ 以下の発熱予防を 36〜72 時間、AHA が 32〜37.5℃ を 36 時間以上。周術期は平温維持（PERIOPCA）。神経学的予後判断は 72 時間以降",
-     "source": "Soar J, et al. Resuscitation 2020／ERC-ESICM 2025（Front Med 2026 の解説）／Chalkias A, et al. (PERIOPCA Consortium). Crit Care 2021;25:265【要確認: JRC 2025 本文の心拍再開後の集中治療の章で、体温管理の目標と MAP 目標の表記】"
+     "value": "SpO2 94〜98%、PaCO2 35〜45 mmHg、MAP 60〜65 mmHg 超（ERC/ESICM 2025）。体温：ILCOR 2020 は 32〜36℃ を 24 時間以上。2025 年版は ERC/ESICM が 37.5℃ 以下の発熱予防を 36〜72 時間、AHA が 32〜37.5℃ を 36 時間以上。周術期は平温維持（PERIOPCA）。神経学的予後判断は 72 時間以降",
+     "source": "Soar J, et al. Resuscitation 2020／Nolan JP, Sandroni C, et al. ERC-ESICM Guidelines 2025 Post-Resuscitation Care. Resuscitation 2025;215 Suppl 1:110809／Chalkias A, et al. (PERIOPCA Consortium). Crit Care 2021;25:265【要確認: JRC 2025 本文の心拍再開後の集中治療の章で、体温管理の目標と MAP 目標の表記】"
     },
     {
      "item": "脊麻中の心停止",
@@ -920,7 +920,8 @@
     "Levine RL, et al. N Engl J Med 1997;337:301-306",
     "アンカロン注 150・シンビット静注用・カルチコール注射液 添付文書（PMDA）",
     "医療法 第 6 条の 10 第 1 項（医療事故調査・支援センターへの報告。第 2 項は遺族への事前説明。医療事故調査制度、2015 年 10 月施行）",
-    "Lott C, Karageorgos V, et al. European Resuscitation Council Guidelines 2025 Special Circumstances in Resuscitation. Resuscitation 2025;215 Suppl 1:110753（高カリウム血症）"
+    "Lott C, Karageorgos V, et al. European Resuscitation Council Guidelines 2025 Special Circumstances in Resuscitation. Resuscitation 2025;215 Suppl 1:110753（高カリウム血症）",
+    "Nolan JP, Sandroni C, et al. European Resuscitation Council and European Society of Intensive Care Medicine Guidelines 2025 Post-Resuscitation Care. Resuscitation 2025;215 Suppl 1:110809（酸素・CO2・MAP・体温管理・予後評価）"
    ]
   }
  ]

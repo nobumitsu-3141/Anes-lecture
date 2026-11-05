@@ -359,7 +359,7 @@
     },
     {
      "item": "アトロピンと次の薬（成人、症候性徐脈）",
-     "value": "アトロピン 0.5 mg 静注（JCS/JHRS 2020・ERC 2025。JRC 2020 は成人の徐脈治療薬を未評価）、3〜5 分ごとに反復し総量 3 mg まで（AHA・ERC）。AHA 2020 は 1 回 1 mg、2018 ACC/AHA/HRS（米国心臓病学会／米国心臓協会／米国不整脈学会）は 0.5〜1 mg。0.5 mg と 1 mg の直接比較はない。0.5 mg 未満では逆説的徐脈の報告。心臓移植後は使わない（2018 ACC/AHA/HRS：Class III: Harm）。結節下ブロックではかえって心拍数が下がりうる（JCS/JHRS 2020）。無効時の持続投与：イソプロテレノール 0.01〜0.03 µg/kg/分、アドレナリン 2〜10 µg/分、ドパミン 2〜10 µg/kg/分（JCS/JHRS 2020。AHA 2020 はドパミン 5〜20 µg/kg/分）",
+     "value": "アトロピン 0.5 mg 静注（JCS/JHRS 2020・ERC 2025。JRC 2020 は成人の徐脈治療薬を未評価）、3〜5 分ごとに反復し総量 3 mg まで（AHA・ERC）。AHA の成人徐脈アルゴリズム（算法図。Panchal 2020 の本文は推奨の強さ〔COR 2a〕だけで用量の記載なし）は 1 回 1 mg、2018 ACC/AHA/HRS（米国心臓病学会／米国心臓協会／米国不整脈学会）は 0.5〜1 mg。0.5 mg と 1 mg の直接比較はない。0.5 mg 未満では逆説的徐脈の報告。心臓移植後は使わない（2018 ACC/AHA/HRS：Class III: Harm）。結節下ブロックではかえって心拍数が下がりうる（JCS/JHRS 2020）。無効時の持続投与：イソプロテレノール 0.01〜0.03 µg/kg/分、アドレナリン 2〜10 µg/分、ドパミン 2〜10 µg/kg/分（JCS/JHRS 2020。AHA の成人徐脈アルゴリズム〔算法図〕はドパミン 5〜20 µg/kg/分。Panchal 2020 の本文には用量の記載なし）",
      "source": "Ono K, et al. JCS/JHRS 2020 Guideline on Pharmacotherapy of Cardiac Arrhythmias. Circ J 2022;86:1790-1924／Yokose M, et al. Circ Rep 2025;7:1044-1050／Panchal AR, et al. Circulation 2020;142(16 Suppl 2):S366-S468／Kusumoto FM, et al. 2018 ACC/AHA/HRS 徐脈ガイドライン. Heart Rhythm 2019;16:e128-e226／Soar J, et al. Resuscitation 2025;215:110769（ERC 2025 ALS）"
     },
     {

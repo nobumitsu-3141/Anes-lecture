@@ -56,8 +56,8 @@
     },
     {
       "item": "ROSC 後の目標",
-      "value": "SpO2 94〜98%、PaCO2 35〜45 mmHg。体温：ILCOR 2020 は 32〜36℃ を 24 時間以上。2025 年版は ERC/ESICM が 37.5℃ 以下の発熱予防を 36〜72 時間、AHA が 32〜37.5℃ を 36 時間以上。周術期は平温維持（PERIOPCA）。神経学的予後判断は 72 時間以降",
-      "source": "Soar J, et al. Resuscitation 2020／ERC-ESICM 2025（Front Med 2026 の解説）／Chalkias A, et al. (PERIOPCA Consortium). Crit Care 2021;25:265【要確認: JRC 2025 本文の心拍再開後の集中治療の章で、体温管理の目標と MAP 目標の表記】"
+      "value": "SpO2 94〜98%、PaCO2 35〜45 mmHg、MAP 60〜65 mmHg 超（ERC/ESICM 2025）。体温：ILCOR 2020 は 32〜36℃ を 24 時間以上。2025 年版は ERC/ESICM が 37.5℃ 以下の発熱予防を 36〜72 時間、AHA が 32〜37.5℃ を 36 時間以上。周術期は平温維持（PERIOPCA）。神経学的予後判断は 72 時間以降",
+      "source": "Soar J, et al. Resuscitation 2020／Nolan JP, Sandroni C, et al. ERC-ESICM Guidelines 2025 Post-Resuscitation Care. Resuscitation 2025;215 Suppl 1:110809／Chalkias A, et al. (PERIOPCA Consortium). Crit Care 2021;25:265【要確認: JRC 2025 本文の心拍再開後の集中治療の章で、体温管理の目標と MAP 目標の表記】"
     },
     {
       "item": "脊麻中の心停止",
@@ -98,6 +98,7 @@
     "Levine RL, et al. N Engl J Med 1997;337:301-306",
     "アンカロン注 150・シンビット静注用・カルチコール注射液 添付文書（PMDA）",
     "医療法 第 6 条の 10 第 1 項（医療事故調査・支援センターへの報告。第 2 項は遺族への事前説明。医療事故調査制度、2015 年 10 月施行）",
-    "Lott C, Karageorgos V, et al. European Resuscitation Council Guidelines 2025 Special Circumstances in Resuscitation. Resuscitation 2025;215 Suppl 1:110753（高カリウム血症）"
+    "Lott C, Karageorgos V, et al. European Resuscitation Council Guidelines 2025 Special Circumstances in Resuscitation. Resuscitation 2025;215 Suppl 1:110753（高カリウム血症）",
+    "Nolan JP, Sandroni C, et al. European Resuscitation Council and European Society of Intensive Care Medicine Guidelines 2025 Post-Resuscitation Care. Resuscitation 2025;215 Suppl 1:110809（酸素・CO2・MAP・体温管理・予後評価）"
   ]
 }
