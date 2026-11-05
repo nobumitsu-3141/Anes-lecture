@@ -26,7 +26,7 @@
     },
     {
       "item": "FRC",
-      "value": "立位 約 3 L（2.8〜3.1）。仰臥位 −0.8〜1.0 L（座位より −27%）。導入でさらに −0.4〜0.5 L（Wahba：全身麻酔で約 −20%）。Trendelenburg さらに −12%（麻酔中の小児）、腹臥位 +53%。妊娠 −9.5〜25%。BMI と指数関数的に減少（r ＝ 0.86）、病的肥満は導入で −51%（2.2 → 1.0 L、覚醒時の残気量未満）。CC ≈ FRC：立位 65〜70 歳（座位 ≥75 歳）、仰臥位約 44 歳・立位約 66 歳（Leblanc 1970 由来とされる教科書的な値。source の【要確認】参照）。麻酔中の仰臥位では CC > FRC",
+      "value": "立位 約 3 L（2.8〜3.1）。仰臥位 −0.8〜1.0 L（座位より −27%）。導入でさらに −0.4〜0.5 L（Wahba：全身麻酔で約 −20%）。Trendelenburg さらに −12%（麻酔中の小児）、腹臥位 +53%。妊娠 −9.5〜25%。BMI と指数関数的に減少（r ＝ 0.86）、病的肥満は導入で −51%（2.2 → 1.0 L、覚醒時の残気量未満）。CC ≈ FRC：立位 65〜70 歳（座位 ≥75 歳）、仰臥位約 44 歳・立位約 66 歳（Leblanc 1970 由来とされる教科書的な値。出典欄の要確認を参照）。麻酔中の仰臥位では CC > FRC",
       "source": "Saraswat V. 2015／Patwa A, Shah A. 2015／Wahba RW. Can J Anaesth 1991;38:384-400／Lagier D, et al. Anesthesiology 2022;136:206-236／Pelosi P, et al. Anesth Analg 1998;87:654-660／Damia G, et al. Br J Anaesth 1988;60:574-578／LoMauro A, Aliverti A. Breathe 2015;11:297-301／Leblanc P, et al. J Appl Physiol 1970;28:448-451／Hedenstierna G, et al. J Appl Physiol 1981;50:55-64【要確認: 仰臥位 44 歳・立位 66 歳を Leblanc 1970 の本文で】"
     },
     {
