@@ -75,5 +75,15 @@
     "Kranke P, et al. Anesth Analg 2002;94:453-460／2004;99:718-727／Liu ZX, et al. Can J Anaesth 2015;62:816-829／Wang J, et al. BMC Anesthesiol 2020;20:104／Tie HT, et al. BMC Anesthesiol 2014;14:12／Zhou Y, et al. BMC Anesthesiol 2019;19:245／Szeto HH, et al. Ann Intern Med 1977;86:738-741／ペチジン塩酸塩注射液・トラマール注 100・温風式加温装置 添付文書（PMDA）",
     "Rosenberg H, et al. Malignant hyperthermia: a review. Orphanet J Rare Dis 2015;10:93／Lott C, et al. European Resuscitation Council Guidelines 2021: Cardiac arrest in special circumstances. Resuscitation 2021;161:152-219／Paal P, et al. Accidental hypothermia: 2021 update. Int J Environ Res Public Health 2022;19:501",
     "日本手術医学会．手術医療の実践ガイドライン（改訂第三版）．手術医学 2019;40(Suppl.)（https://jaom.jp/guiidline/ で PDF 公開）"
+  ],
+  "summary": [
+    "核心温 36℃ 未満を低体温とし、全身麻酔・硬膜外・脊髄くも膜下麻酔では日本麻酔科学会モニター指針に従って必ず体温を測る。",
+    "全身麻酔は閾値間域を約 10 倍の 2〜4℃ に広げて導入直後の再分布で核心温を下げ、脊麻・硬膜外でもプラトーが来ないため大手術ではほぼ同じくらい重い低体温になりうる。",
+    "核心温は肺動脈・食道遠位部・鼓膜（接触型プローブ）・鼻咽頭で測り、直腸温は慎重に扱い、耳式赤外線や側頭動脈式は臨床に使わない。",
+    "軽度低体温は創感染・出血と輸血・回復室滞在・筋弛緩薬の作用延長を増やすが、心イベントの観点では少なくとも 35.5℃ に保てば十分と考える。",
+    "導入前に 10〜30 分プレウォーミングし、術中は温風式加温・輸液加温・室温の確保・体表の広い断熱を組み合わせ、温風はホースだけで送風しない。",
+    "術後シバリングは核心温を測ってから加温と薬で治療し、国内ではペチジンはシバリングに適応外、トラマドール注は筋注専用である制約を守る。",
+    "術中の高体温は過剰加温と決めつけず、分時換気量に見合わない EtCO2 上昇と頻脈があれば悪性高熱症を先に疑って鑑別する。",
+    "低体温のまま抜管せず回復室でも加温を続け、離島では温風式加温装置・輸液加温器・体温プローブの在庫を事前に確かめ、能動加温の装置が足りなければまず受動的な覆いで補う。"
   ]
 }

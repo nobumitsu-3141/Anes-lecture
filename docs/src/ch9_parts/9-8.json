@@ -90,5 +90,16 @@
     "Puckett JR, et al. Ann Surg 2017;265:874-881／Egal M, et al. Anesth Analg 2016;122:173-185／Kheterpal S, et al. Anesthesiology 2007;107:892-902／Lassnigg A, et al. J Am Soc Nephrol 2000;11:97-104／Myles PS, et al. RELIEF. N Engl J Med 2018;378:2263-2274／Thiele RH, et al. ASER/POQI joint consensus. Perioper Med (Lond) 2016;5:24／Prowle JR, et al. ADQI/POQI joint consensus. Nat Rev Nephrol 2021;17:605-618",
     "KDIGO Clinical Practice Guideline for AKI 2012／AKI（急性腎障害）診療ガイドライン 2016（Doi K, et al. J Intensive Care 2018;6:48）",
     "Dellinger RP, et al. SSC 2012. Intensive Care Med 2013;39:165-228／Rudski LG, et al. J Am Soc Echocardiogr 2010;23:685-713"
+  ],
+  "summary": [
+    "反応性があっても低灌流の所見があり利益が危険を上回るときだけ輸液し、明らかな出血など循環血液量減少が明白なら反応性を調べずに輸液・輸血を優先する。",
+    "脈圧変動（PPV：pulse pressure variation）は波形を目で見て判断せず、機器がなければ画面を止めて最大と最小の脈圧から手で計算し、全身麻酔中のグレーゾーン 9〜13% を踏まえて解釈する。",
+    "動的指標は LIMITS（心拍数/呼吸数比が低い・不整脈・低い 1 回換気量・腹腔内圧上昇・開胸・自発呼吸）では信頼できず、肺保護換気や気腹など術中の多くの場面が当てはまる。",
+    "動的指標が使えなければ 1 回換気量チャレンジ、呼気終末閉塞、受動的下肢挙上（PLR：passive leg raising）、ミニ輸液負荷で試し、PLR は血圧でなく CO で判定する。",
+    "輸液負荷は晶質液 200〜250 mL を短時間で入れ、終了直後に CO/SV の増加で判定し、CO が増えずに充満圧だけ上がれば直ちに中止する。",
+    "中心静脈圧は目標値にせず傾向と安全限界に使い、心エコーは左室流出路（LVOT：left ventricular outflow tract）の速度時間積分（VTI：velocity time integral）を同じ径で変化率として追う。",
+    "灌流は乳酸の反復測定と毛細血管再充満時間で評価し、中心静脈血酸素飽和度（ScvO2：central venous oxygen saturation）は >70% でも局所の低灌流を見逃すので目標にしない。",
+    "術中乏尿だけで急性腎障害（AKI：acute kidney injury）や循環血液量不足と決めず、まず膀胱カテーテルの屈曲・閉塞を確認して灌流指標と合わせ、利尿薬は使わない。",
+    "手術室の外の自発呼吸患者では PPV と 1 回拍出量変動（SVV：stroke volume variation）を使わず、輸液負荷に反応しない低血圧や乳酸上昇では研修医が 1 人で輸液を重ねず上級医に連絡する。"
   ]
 }

@@ -98,5 +98,16 @@
     "Disma N, et al. Airway management in neonates and infants: ESAIC/BJA joint guidelines. Br J Anaesth 2024;132:124-144",
     "Black AE, et al. (APA). Development of a guideline for the management of the unanticipated difficult airway in pediatric practice. Paediatr Anaesth 2015;25:346-362／Fiadjoe JE, et al. PeDI. Lancet Respir Med 2016;4:37-48",
     "Lockey D, et al. Safer prehospital anaesthesia: updated guidelines from the Association of Anaesthetists. Anaesthesia 2026;81:1132-1147／MSD ブリディオン静注 電子添文（PMDA 掲載）（2023 年 11 月改訂 第 2 版）"
+  ],
+  "summary": [
+    "NAP4（Fourth National Audit Project：英国の第 4 回全国監査）で気道管理が「良好」とされたのは 19% だけで、アルゴリズムで「いつ今の手を諦めて次へ移るか」を事前に決めて共有する。",
+    "JSA-AMA 2014 は緊急度を SpO2 ではなく換気の状態（V1〜V3）で判定し、最大限努力しても V2・V3 なら SpO2 の値にかかわらず次のゾーンへ移る。",
+    "DAS は挿管 3＋1 回で失敗を宣言して声門上器具・最後のマスク換気へ進み、駄目なら CICO（can't intubate, can't oxygenate：挿管も酸素化もできない）を宣言して緊急前頸部気道へ移る。",
+    "Vortex はマスク・声門上器具・気管チューブを各最大 3 回試みて酸素が届かなければ外科的気道へ進み、CAFG 2021 は 3 回で入らなければ「挿管失敗」を宣言して出口戦略を考える。",
+    "無呼吸から SpO2 90% までは室内気で 1〜2 分しかなく試行を重ねるほど有害事象が増えるので、研修医は経過時間・SpO2・試行回数を名前を呼んで読み上げる。",
+    "スガマデクスで筋弛緩を戻してもプロポフォール・オピオイドの残存や腫れた気道は解消しないので救済手段と考えず、計画に入れるなら 16 mg/kg の量を導入前に計算しておく。",
+    "覚醒させるのはマスクか声門上器具で酸素化が保たれているときの選択肢であって CICO を救う手段ではなく、覚醒させた後は記録・説明し次回は覚醒下挿管を計画する。",
+    "応援を呼ぶきっかけを 3 つ決めておき、導入前のブリーフィングで次の Plan に移るきっかけを確認し、名前を呼んで仕事を割り振り、受け手が復唱し送り手が確認する closed-loop で伝える。",
+    "成人の eFONA はメス・ブジー・チューブ法の器材を 1 組で全気道管理場所に置いて方法を 1 つに絞り、離島で麻酔科医 1 人なら導入前に外科医・看護師へ役割を名前で割り振る。"
   ]
 }

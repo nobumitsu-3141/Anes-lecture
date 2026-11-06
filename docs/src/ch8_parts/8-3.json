@@ -99,5 +99,16 @@
     "Lagier D, et al. Perioperative pulmonary atelectasis Part II. Anesthesiology 2022;136:206-236",
     "Tasaka S, et al. ARDS 診療ガイドライン 2021（J Intensive Care 2022;10:32）",
     "PRISM Trial Group. Lancet Respir Med 2021;9:1221-1230／Squadrone V, et al. JAMA 2005;293:589-595"
+  ],
+  "summary": [
+    "術後肺合併症（PPC：postoperative pulmonary complications）を防ぐため、1 回換気量は予測体重（PBW：predicted body weight）あたり 6〜8 mL/kg とし、PEEP と組み合わせる。",
+    "過伸展・虚脱と再開放の繰り返し・高 FiO2 による吸収性無気肺の 3 機序を意識し、ZEEP（zero end-expiratory pressure：PEEP ゼロ）を避けて PEEP を少なくとも 5 cmH2O かける。",
+    "換気の評価はピーク圧でなく吸気ポーズのプラトー圧から求めた ΔP で行い、ΔP ≤15、理想 ≤12 cmH2O を目標とし、PEEP を上げて ΔP が上がったら戻す。",
+    "PEEP 5 cmH2O から始めて ΔP・コンプライアンス・酸素化・血圧で調整し、高 PEEP は PPC を減らさず低血圧を増やすので一律に上げない。",
+    "RM は全例ルーチンに行わず、循環血液量が足りていることを確かめ昇圧薬を手元に置き、持続膨張より循環に優しい段階的な PEEP 漸増法で行い、終了後は PEEP で肺を保つ。",
+    "目標 SpO2 は 92〜97% とし、低酸素がないのに SpO2 ≥98% を狙わず、低 1 回換気量に伴う軽〜中等度の高 CO2 血症は許容する。",
+    "術前は ARISCAT（Assess Respiratory Risk in Surgical Patients in Catalonia）スコアでリスクを層別化して禁煙を勧め、四連刺激（TOF：train-of-four）比 >0.9 を確認して頭高位で抜管する。",
+    "持続気道陽圧（CPAP：continuous positive airway pressure）や高流量鼻カニュラ（HFNC：high-flow nasal cannula）は予防のルーチン使用で PPC を減らさず、低酸素が起きたら治療に使う。",
+    "小児・片肺換気・肥満でも低 1 回換気量と PEEP の原則を守り、片肺換気は 4〜6 mL/kg PBW とし、ARDS 向けの高 PEEP を健常肺の手術患者に持ち込まない。"
   ]
 }

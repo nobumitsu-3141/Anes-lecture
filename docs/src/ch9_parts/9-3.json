@@ -80,5 +80,16 @@
     "Bottussi A, et al. J Cardiothorac Vasc Anesth 2025;39:3173-3184（右心・PH）／Trzebicka J, et al. Anaesth Crit Care Pain Med 2026;45:101770（LVOTO/SAM）／Maron MS, et al. N Engl J Med 2003;348:295-303／Liang LW, et al. J Card Fail 2024;30:1136-1153（閉塞性 HCM）",
     "Roizen MF, et al. J Vasc Surg 1984;1:300-305／Gelman S. Anesthesiology 1995;82:1026-1060／Tanabe A, et al. Japan Endocrine Society Clinical Practice Guideline for the Diagnosis and Management of Pheochromocytoma and Paraganglioma 2025. Endocr J 2026;73:115-157／Lenders JW, et al. J Clin Endocrinol Metab 2014;99:1915-1942（米国内分泌学会）／Strandgaard S, et al. Br Med J 1973;1:507-510／Joshi B, et al. Anesth Analg 2012;114:503-510／Takazawa T, et al. J Anesth 2021;35:778-793／Olsen AA, et al. Anaesth Crit Care Pain Med 2023;42:101162（腸間膜牽引症候群）",
     "ネオシネジンコーワ注・ノルアドリナリン注・ピトレシン注射液 20・ペルジピン注・ニトログリセリン注・ニトプロ持続静注液・オノアクト・ドブタミン 添付文書（PMDA）"
+  ],
+  "summary": [
+    "後負荷は体血管抵抗（SVR：systemic vascular resistance）だけでなく壁応力でも考え、大動脈弁狭窄（AS：aortic stenosis）や拡大した左室では SVR が正常でも後負荷が高いと判断する",
+    "プロポフォール・敗血症・アナフィラキシーは SVR を下げ、高齢者の脊麻では主に SV が下がり、デスフルランの急な濃度上昇は逆に交感神経を賦活して血圧を上げる",
+    "収縮力が落ちた心室では少しの後負荷上昇で 1 回拍出量（SV：stroke volume）が急に下がる（afterload mismatch）ため、痛み・浅麻酔・強い吸気努力・大動脈遮断・褐色細胞腫による上昇に備える",
+    "左室の冠血流は主に拡張期に流れ、冠灌流圧 ≈ 拡張期血圧 − 左室拡張末期圧なので、AS では低めの正常心拍の洞調律を保ち、低血圧は直ちに治療する",
+    "SVR は心拍出量（CO：cardiac output）を測らないと出ないため、拡張期血圧・脈圧・末梢の温かさ・心エコーで「血管拡張型」か「低心拍出型」かを見分け、血管収縮薬か強心薬かの方向を決める",
+    "持続投与の昇圧薬はノルアドレナリンを第一選択とし、フェニレフリンは前負荷で CO への効果が変わること、バソプレシンは国内で敗血症性ショックへの適応がない（適応外）ことを踏まえて使う",
+    "高血圧はまず麻酔深度と鎮痛を見直し、AS・虚血では血管拡張薬を慎重にし、左室流出路閉塞・僧帽弁収縮期前方運動では強心薬を止め輸液・フェニレフリン・短時間作用型 β 遮断薬で対処する",
+    "右心の後負荷である肺血管抵抗（PVR：pulmonary vascular resistance）は低酸素・高 CO2・アシドーシス・痛みで上がるため、肺高血圧では保護換気とノルアドレナリンで右室を守る",
+    "ショック患者の導入は動脈ラインとノルアドレナリンを準備し導入薬を減量して 1 人で始めず、病棟では小児の遅い低血圧とノルアドレナリンの濃度・mg/µg の取り違えに注意する"
   ]
 }

@@ -75,5 +75,16 @@
     "Morrell NW, et al. Clin Sci 1994;86:639-644／Benumof JL. J Appl Physiol 1979;46:1047-1048／Hambraeus-Jonzon K, et al. Anesthesiology 1997;86:308-315／Licker M, et al. Hypoxaemia during one-lung ventilation. Saudi J Anaesth 2021;15:250-263／Karzai W, Schwarzkopf K. Anesthesiology 2009;110:1402-1411／Ko R, et al. Anesth Analg 2009;108:1092-1096",
     "Kovacs G, et al. Eur Respir J 2009;34:888-894／Vonk Noordegraaf A, et al. Eur Respir J 2019;53:1801900／Naeije R, et al. Eur Respir J 2022;59:2102334／Naeije R, et al. Am J Respir Crit Care Med 2013;187:576-583／Argiento P, et al. Chest 2012;142:1158-1165／Bottussi A, et al. J Cardiothorac Vasc Anesth 2025;39:3173-3184",
     "Severinghaus JW. Simple, accurate equations for human blood O2 dissociation computations. J Appl Physiol 1979;46:599-602／日本麻酔科学会 安全な麻酔のためのモニター指針（2025 年 8 月改訂）／厚生省特定疾患呼吸不全調査研究班 昭和 56 年度（1981 年度）研究報告（定義は日本呼吸ケア・リハビリテーション学会・日本呼吸器学会『酸素療法マニュアル』2017 も参照）"
+  ],
+  "summary": [
+    "酸素化はSpO2で、換気はEtCO2・呼吸数・胸郭の動きで別に評価し、酸素投与中はSpO2が保たれたまま低換気（高CO2）が隠れることを前提にする。",
+    "低酸素血症は肺胞低換気・換気血流比不均等・拡散障害・シャント・吸入気酸素分圧の低下の5機序で考え、A-a較差が開くのは不均等・拡散障害・シャントである。",
+    "真のシャントはFiO2に反応しないので、無気肺・DLT（double-lumen tube：ダブルルーメンチューブ）位置異常・分泌物閉塞などによる低酸素はFiO2を上げるだけで済ませず原因を直す。",
+    "PaCO2-EtCO2較差は肺胞死腔が増えると広がるのでEtCO2をPaCO2の代わりにせず、EtCO2急低下では波形消失なら回路・気道を、波形残存なら循環の破綻を疑う。",
+    "FRCは仰臥位と全身麻酔の導入で減って閉鎖容量に近づくので、肥満・妊婦・高齢者では頭高位で前酸素化し、PEEP（positive end-expiratory pressure：呼気終末陽圧）をかける。",
+    "麻酔導入では90%に荷重側の無気肺ができるが、困難気道・肥満・妊婦・低肺機能では100%酸素で前酸素化し、無気肺はリクルートメント・PEEP・中等度FiO2で扱う。",
+    "片肺換気（OLV：one-lung ventilation）中の低酸素はFiO2を上げ血圧を戻したうえで気管支鏡でチューブ位置を確かめ、降圧後のSpO2低下ではHPVを弱める薬を疑う。",
+    "右心機能が悪い患者や肺高血圧では、肺血管抵抗（PVR：pulmonary vascular resistance）を上げる低酸素・高CO2・アシドーシス・無気肺・過大なPEEPと1回換気量を避ける。",
+    "SpO2 90%（PaO2 約 60 mmHg）未満は解離曲線の急峻部と心得て、病棟では酸素投与中の低換気と胸部X線に写らない術後無気肺を、航空搬送では高度による低酸素を見逃さない。"
   ]
 }

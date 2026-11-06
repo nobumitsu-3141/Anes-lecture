@@ -81,6 +81,17 @@
     "Morrell NW, et al. Clin Sci 1994;86:639-644／Benumof JL. J Appl Physiol 1979;46:1047-1048／Hambraeus-Jonzon K, et al. Anesthesiology 1997;86:308-315／Licker M, et al. Hypoxaemia during one-lung ventilation. Saudi J Anaesth 2021;15:250-263／Karzai W, Schwarzkopf K. Anesthesiology 2009;110:1402-1411／Ko R, et al. Anesth Analg 2009;108:1092-1096",
     "Kovacs G, et al. Eur Respir J 2009;34:888-894／Vonk Noordegraaf A, et al. Eur Respir J 2019;53:1801900／Naeije R, et al. Eur Respir J 2022;59:2102334／Naeije R, et al. Am J Respir Crit Care Med 2013;187:576-583／Argiento P, et al. Chest 2012;142:1158-1165／Bottussi A, et al. J Cardiothorac Vasc Anesth 2025;39:3173-3184",
     "Severinghaus JW. Simple, accurate equations for human blood O2 dissociation computations. J Appl Physiol 1979;46:599-602／日本麻酔科学会 安全な麻酔のためのモニター指針（2025 年 8 月改訂）／厚生省特定疾患呼吸不全調査研究班 昭和 56 年度（1981 年度）研究報告（定義は日本呼吸ケア・リハビリテーション学会・日本呼吸器学会『酸素療法マニュアル』2017 も参照）"
+   ],
+   "summary": [
+    "酸素化はSpO2で、換気はEtCO2・呼吸数・胸郭の動きで別に評価し、酸素投与中はSpO2が保たれたまま低換気（高CO2）が隠れることを前提にする。",
+    "低酸素血症は肺胞低換気・換気血流比不均等・拡散障害・シャント・吸入気酸素分圧の低下の5機序で考え、A-a較差が開くのは不均等・拡散障害・シャントである。",
+    "真のシャントはFiO2に反応しないので、無気肺・DLT（double-lumen tube：ダブルルーメンチューブ）位置異常・分泌物閉塞などによる低酸素はFiO2を上げるだけで済ませず原因を直す。",
+    "PaCO2-EtCO2較差は肺胞死腔が増えると広がるのでEtCO2をPaCO2の代わりにせず、EtCO2急低下では波形消失なら回路・気道を、波形残存なら循環の破綻を疑う。",
+    "FRCは仰臥位と全身麻酔の導入で減って閉鎖容量に近づくので、肥満・妊婦・高齢者では頭高位で前酸素化し、PEEP（positive end-expiratory pressure：呼気終末陽圧）をかける。",
+    "麻酔導入では90%に荷重側の無気肺ができるが、困難気道・肥満・妊婦・低肺機能では100%酸素で前酸素化し、無気肺はリクルートメント・PEEP・中等度FiO2で扱う。",
+    "片肺換気（OLV：one-lung ventilation）中の低酸素はFiO2を上げ血圧を戻したうえで気管支鏡でチューブ位置を確かめ、降圧後のSpO2低下ではHPVを弱める薬を疑う。",
+    "右心機能が悪い患者や肺高血圧では、肺血管抵抗（PVR：pulmonary vascular resistance）を上げる低酸素・高CO2・アシドーシス・無気肺・過大なPEEPと1回換気量を避ける。",
+    "SpO2 90%（PaO2 約 60 mmHg）未満は解離曲線の急峻部と心得て、病棟では酸素投与中の低換気と胸部X線に写らない術後無気肺を、航空搬送では高度による低酸素を見逃さない。"
    ]
   },
   {
@@ -182,6 +193,17 @@
     "Janssens JP, et al. Eur Respir J 1999;13:197-205（加齢と呼吸機能）",
     "Jain RK, et al. Indian J Anaesth 2013;57:525-532（麻酔器の換気装置）",
     "日本麻酔科学会 安全な麻酔のためのモニター指針（2025 年 8 月 第 5 回改訂）／日本麻酔科学会 麻酔器の始業点検（2022 年 10 月改訂 第 6 版）／セボフレン吸入麻酔液 電子添文（丸石製薬、2023 年 6 月改訂 第 1 版）／厚生労働省医薬食品局 審査管理課長・安全対策課長通知「二酸化炭素吸収剤による発火等に係る自主点検等について」（薬食審査発第0906001号・薬食安発第0906001号、2004 年 9 月 6 日）"
+   ],
+   "summary": [
+    "設定の目的は酸素化と換気を保ちつつ肺を傷めないことで、PEEP（positive end-expiratory pressure：呼気終末陽圧）5 cmH2O で始めて個別に調整する。",
+    "1 回換気量は実体重ではなく予測体重（PBW：predicted body weight）で計算し、6〜8 mL/kg PBW で始める。",
+    "術後肺合併症は換気様式より設定値で決まるので、従量式では気道内圧上限、従圧式では 1 回換気量・分時換気量の下限のアラームを必ず設定する。",
+    "吸気ポーズでピーク圧とプラトー圧を比べて抵抗上昇かコンプライアンス低下かを見分け、駆動圧（プラトー圧 − PEEP）は 15 cmH2O 以下を目安にする。",
+    "高い PEEP とリクルートメントは一律に行わず、FiO2（fraction of inspired oxygen：吸入酸素濃度）は挿管後に SpO2 を保てる最も低い値まで下げる。",
+    "設定後は胸郭の動き・カプノグラム・実測の 1 回換気量・気道内圧を順に確かめ、呼吸数は EtCO2 35〜40 mmHg を目標に調整し、アラームを消音したままにしない。",
+    "腹腔鏡では呼吸数で分時換気量を増やし、片肺換気は 4〜6 mL/kg 予測体重で始め、COPD は吸気：呼気を延ばして呼気時間を確保する。",
+    "小児は人工鼻と接続部の死腔が 1 回換気量に比べて大きいことに注意し、低流量麻酔では吸気酸素濃度計と低酸素アラームを前提として二酸化炭素吸収剤を乾燥させない。",
+    "病棟・ICU の人工呼吸も同じ原則で考え、離島では麻酔器の換気装置の駆動方式を取扱説明書で確かめ、回路外れはカプノグラムの消失と分時換気量の低下で気づく。"
    ]
   },
   {
@@ -285,6 +307,17 @@
     "Lagier D, et al. Perioperative pulmonary atelectasis Part II. Anesthesiology 2022;136:206-236",
     "Tasaka S, et al. ARDS 診療ガイドライン 2021（J Intensive Care 2022;10:32）",
     "PRISM Trial Group. Lancet Respir Med 2021;9:1221-1230／Squadrone V, et al. JAMA 2005;293:589-595"
+   ],
+   "summary": [
+    "術後肺合併症（PPC：postoperative pulmonary complications）を防ぐため、1 回換気量は予測体重（PBW：predicted body weight）あたり 6〜8 mL/kg とし、PEEP と組み合わせる。",
+    "過伸展・虚脱と再開放の繰り返し・高 FiO2 による吸収性無気肺の 3 機序を意識し、ZEEP（zero end-expiratory pressure：PEEP ゼロ）を避けて PEEP を少なくとも 5 cmH2O かける。",
+    "換気の評価はピーク圧でなく吸気ポーズのプラトー圧から求めた ΔP で行い、ΔP ≤15、理想 ≤12 cmH2O を目標とし、PEEP を上げて ΔP が上がったら戻す。",
+    "PEEP 5 cmH2O から始めて ΔP・コンプライアンス・酸素化・血圧で調整し、高 PEEP は PPC を減らさず低血圧を増やすので一律に上げない。",
+    "RM は全例ルーチンに行わず、循環血液量が足りていることを確かめ昇圧薬を手元に置き、持続膨張より循環に優しい段階的な PEEP 漸増法で行い、終了後は PEEP で肺を保つ。",
+    "目標 SpO2 は 92〜97% とし、低酸素がないのに SpO2 ≥98% を狙わず、低 1 回換気量に伴う軽〜中等度の高 CO2 血症は許容する。",
+    "術前は ARISCAT（Assess Respiratory Risk in Surgical Patients in Catalonia）スコアでリスクを層別化して禁煙を勧め、四連刺激（TOF：train-of-four）比 >0.9 を確認して頭高位で抜管する。",
+    "持続気道陽圧（CPAP：continuous positive airway pressure）や高流量鼻カニュラ（HFNC：high-flow nasal cannula）は予防のルーチン使用で PPC を減らさず、低酸素が起きたら治療に使う。",
+    "小児・片肺換気・肥満でも低 1 回換気量と PEEP の原則を守り、片肺換気は 4〜6 mL/kg PBW とし、ARDS 向けの高 PEEP を健常肺の手術患者に持ち込まない。"
    ]
   }
  ]

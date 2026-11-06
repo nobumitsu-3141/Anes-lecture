@@ -73,5 +73,16 @@
     "Aya HD, et al. Crit Care Med 2017;45:e161／Toscani L, et al. Crit Care 2017;21:207／Muller L, et al. Anesthesiology 2011;115:541-547／Messina A, et al. Anesth Analg 2017;125:1532-1543／Nunes TS, et al. Ann Intensive Care 2014;4:25／Barbier C, et al. Intensive Care Med 2004;30:1740-1746／Feissel M, et al. Intensive Care Med 2004;30:1834-1837／Muller L, et al. Crit Care 2012;16:R188／Cheung AT, et al. Anesthesiology 1994;81:376-387",
     "Persichini R, et al. Crit Care Med 2012;40:3146／Monnet X, et al. Crit Care Med 2011;39:689／Kalmar AF, et al. J Clin Monit Comput 2018;32:969／Rebet O, et al. Eur J Anaesthesiol 2016;33:638／Gelman S, Bigatello L. Can J Anaesth 2018;65:294／Meng L, et al. Br J Anaesth 2011;107:209-217／Guly HR, et al. Resuscitation 2011;82:556-559",
     "日本麻酔科学会 術前絶飲食ガイドライン 2012／ネオシネジンコーワ注・ノルアドリナリン注 添付文書（PMDA）／Mukherjee M, et al. ASE right heart guideline. J Am Soc Echocardiogr 2025;38:141-186（Rudski LG, et al. J Am Soc Echocardiogr 2010;23:685-713 を置き換え）／ATLS 10th ed"
+  ],
+  "summary": [
+    "前負荷は拡張末期容積で、その値だけでは輸液反応性を予測できず、輸液に反応する患者は約半数と心得て「足りているか」を毎回判断する。",
+    "静脈還流は MSFP と右房圧のわずか 4〜8 mmHg の圧較差で決まり、交感神経の緊張が取れると stressed volume の一部が数秒で unstressed に戻って導入時に血圧が急に下がる。",
+    "脊麻・硬膜外の低血圧は輸液の先行では防げず血管収縮薬で対処し、循環血液量が少なければ陽圧換気開始・PEEP（positive end-expiratory pressure：呼気終末陽圧）増量での急な低下に備える。",
+    "頭低位は一時的なつなぎにとどめ、心肺疾患のない成人は 10 時間絶食でも循環血液量が減らない（嘔吐・下痢などの喪失は別）ので、導入後低血圧は無差別な輸液より中等量の昇圧薬を考える。",
+    "CVP・PAOP・LVEDA などの静的指標や IVC 径の一点の値で輸液反応性を判断せず、CVP は前負荷・臓器灌流の背圧・極端な値・急な変化を見るのに使う。",
+    "PPV・SVV は自発呼吸・不整脈・1 回換気量 <8 mL/kg・開胸などで信頼できないので適用条件を確かめ、低 1 回換気量なら 1 回換気量チャレンジ、それ以外は PLR を使う。",
+    "輸液は循環不安定・反応性あり・過剰輸液リスク低がそろうときに行い、調整晶質液 4 mL/kg を 5〜10 分で入れて前後の 1 回拍出量（SV：stroke volume）を比べる。",
+    "ノルアドレナリンは静脈を縮めて MSFP を上げるが、前負荷非依存の患者ではフェニレフリンで心拍出量が下がり、麻酔下の出血は代償が効きにくいので早めに輸血を準備し応援を呼ぶ。",
+    "病棟の低血圧では輸液前に PLR で反応性を確かめ、心不全・透析患者には慎重に入れ、敗血症性ショックでは 3 時間以内に晶質液 30 mL/kg 以上を入れて SV を見ながら再評価する。"
   ]
 }

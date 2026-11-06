@@ -91,5 +91,15 @@
     "Gómez-Outes A, et al. Meta-analysis of reversal agents for severe DOAC bleeding. J Am Coll Cardiol 2021;77:2987-3001",
     "Rocca B, Ten Cate H. Antidotes for anticoagulation reversal. N Engl J Med 2026;394:2235-2254",
     "ケイセントラ静注用・プリズバインド静注液・オンデキサ静注用・プロタミン硫酸塩静注・ケイツー N 静注 添付文書（PMDA）"
+  ],
+  "summary": [
+    "抗血栓薬は商品名・最終服用時刻・腎機能を最初に確かめ、生命を脅かす出血か、手術までの時間はどれだけかで、待つ・拮抗する・両方のどれにするかを決める",
+    "ワルファリンはビタミン K 依存因子の合成を抑え、DOAC（Direct Oral Anticoagulants：直接経口抗凝固薬）はトロンビンか Xa を直接阻害し、腎機能低下では特にダビガトランの半減期が延びる",
+    "DOAC の量は PT（Prothrombin Time：プロトロンビン時間）・APTT（Activated Partial Thromboplastin Time：活性化部分トロンボプラスチン時間）では判断できない",
+    "ワルファリンの重篤出血・緊急手術は PCC とビタミン K を併用し、PCC は FFP（Fresh Frozen Plasma：新鮮凍結血漿）より INR（International Normalized Ratio：国際標準比）を速く是正する",
+    "ダビガトランにはイダルシズマブ 5 g を使い、Xa 阻害薬へのアンデキサネット アルファは国内では生命を脅かす・止血困難な出血に限り、心大血管手術前の拮抗は PCC で行う",
+    "手術をしない抗血小板薬関連脳出血に血小板輸血はせず、トラネキサム酸はルーチンで足さず、未分画ヘパリンはプロタミン 1 mg でヘパリン 100 単位を中和する",
+    "拮抗の後は止血と引き換えに血栓リスクが戻るので、止血後できるだけ早い抗凝固の再開時期を関係科と早めに決め、適応外使用は判断の理由をカルテに書く",
+    "離島では自院と搬送先の拮抗薬・PCC・ビタミン K・プロタミンの在庫と取り寄せ時間を前もって確かめ、待つ間の局所止血・降圧・搬送判断を先に決めておく"
   ]
 }
