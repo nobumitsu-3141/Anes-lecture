@@ -9,7 +9,7 @@ const path = require('path');
 const MAX_LEN = 40;          // 要点 1 個の字数の上限（全角・半角とも 1 字）
 const MIN_N = 3, MAX_N = 4;  // 1 講義あたりの要点の数
 // 略語として登録しなくてよい英字（単位と、綴りを添える必要のない記号）
-const NO_ABBR = new Set(['mg', 'kg', 'g', 'mL', 'dL', 'L', 'mmHg', 'cmH2O', 'kPa', 'Torr', 'min', 'h', 'mEq', 'mmol', 'mol', 'mOsm', 'J', 'Fr', 'G', 'mm', 'cm', 'm', 'kcal', 'W', 'Hz', 'mA', 'mV', 'U', 'pH', 'ABO', 'Rh', 'A', 'B', 'AB', 'O', 'D', 'X', 'vs', 'I', 'II', 'III', 'IV', 'V', 'VI']);
+const NO_ABBR = new Set(['mg', 'kg', 'g', 'mL', 'dL', 'L', 'mmHg', 'cmH2O', 'kPa', 'Torr', 'min', 'h', 'mEq', 'mmol', 'mol', 'mOsm', 'J', 'Fr', 'G', 'mm', 'cm', 'm', 'kcal', 'W', 'Hz', 'mA', 'mV', 'U', 'K', 'pH', 'ABO', 'Rh', 'A', 'B', 'AB', 'O', 'D', 'X', 'vs', 'I', 'II', 'III', 'IV', 'V', 'VI']);
 
 const args = process.argv.slice(2);
 const chapters = args.length ? args : Array.from({ length: 11 }, (_, i) => String(i + 1));
