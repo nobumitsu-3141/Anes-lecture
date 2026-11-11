@@ -6,11 +6,13 @@
 const fs = require('fs');
 const path = require('path');
 
-const MAX_LEN = 40;          // 要点 1 個の字数の上限（全角・半角とも 1 字）
+const MAX_LEN = 40;          // 要点 1 個の字数の上限（全角・半角とも 1 字。英数字と日本語の間に入れる半角の空白は数えない）
 const MIN_N = 3, MAX_N = 4;  // 1 講義あたりの要点の数
 // 略語として登録しなくてよい英字（単位と、綴りを添える必要のない記号）
 const NO_ABBR = new Set(['mg', 'kg', 'g', 'mL', 'dL', 'L', 'mmHg', 'cmH2O', 'kPa', 'Torr', 'min', 'h', 'mEq', 'mmol', 'mol', 'mOsm', 'J', 'Fr', 'G', 'mm', 'cm', 'm', 'kcal', 'W', 'Hz', 'mA', 'mV', 'U', 'K', 'pH', 'ABO', 'Rh', 'A', 'B', 'AB', 'O', 'D', 'X', 'vs', 'I', 'II', 'III', 'IV', 'V', 'VI']);
 
+// 英数字と日本語が空白なしで隣り合っている箇所（本文の表記にそろえる）
+const JA_ASCII = /[A-Za-z0-9%][ぁ-んァ-ヶー一-龠々]|[ぁ-んァ-ヶー一-龠々][A-Za-z0-9]/;
 const args = process.argv.slice(2);
 const chapters = args.length ? args : Array.from({ length: 11 }, (_, i) => String(i + 1));
 let errors = 0, warns = 0, total = 0;
@@ -42,11 +44,12 @@ for (const n of chapters) {
       count++;
       if (!k || typeof k.text !== 'string' || !k.text.trim()) { err(`${tag}: text がない`); continue; }
       const text = k.text;
-      const len = Array.from(text).length;
+      const len = Array.from(text.replace(/ /g, '')).length;
       if (len > MAX_LEN) err(`${tag}: ${len} 字（上限 ${MAX_LEN} 字）「${text}」`);
       if (/要確認/.test(text)) err(`${tag}: 【要確認】の内容は要点にしない「${text}」`);
       if (/。$/.test(text)) err(`${tag}: 文末の「。」は付けない「${text}」`);
       if (/\n/.test(text)) err(`${tag}: 改行を入れない`);
+      if (JA_ASCII.test(text)) err(`${tag}: 英数字と日本語の間は半角の空白を 1 つ入れる「${text}」`);
       if (seen.has(text)) err(`${tag}: ${seen.get(text)} と同じ文`); else seen.set(text, tag);
       const ref = k.ref;
       if (!Array.isArray(ref) || !ref.length) { err(`${tag}: ref（解説の番号）がない`); continue; }
