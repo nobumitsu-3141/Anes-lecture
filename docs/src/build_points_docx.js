@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType,
-  AlignmentType, BorderStyle, ShadingType, LevelFormat, PageBreak, Header, Footer, PageNumber,
+  AlignmentType, BorderStyle, ShadingType, LevelFormat, PageBreak, Header, Footer, PageNumber, VerticalAlign,
 } = require('docx');
 
 //   node build_points_docx.js <入力 points.json> <出力 docx> [keypoints.json]
@@ -59,16 +59,22 @@ children.push(new Paragraph({ children: [run('構成：この章の要点（全�
 children.push(new Paragraph({ children: [new PageBreak()] }));
 // この章の要点
 children.push(new Paragraph({ text: 'この章の要点', heading: HeadingLevel.HEADING_1 }));
-children.push(para('各講義で持ち帰る要点を、先にまとめて示します。かっこ内は、その要点を詳しく述べている解説の番号です。', { size: 19, color: GRAY }));
+children.push(para('各講義で持ち帰る要点を、先にまとめて示します。右端の数字は、その要点を詳しく述べている解説の番号です。', { size: 19, color: GRAY }));
+const KPW = [8326, 700]; // 要点の一覧：要点の文／解説の番号（右端）
+const noBorder = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+const noBorders = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder };
 for (const d of data.decks) {
-  children.push(new Paragraph({ children: [run(`${d.id}　${d.title}`, { bold: true, color: BLUE, size: 22 })], keepNext: true, spacing: { before: 160, after: 80 } }));
-  for (const k of kpDecks[d.id]) {
-    const kids = [run(k.text, { bold: true, size: 22 })];
-    if (Array.isArray(k.ref) && k.ref.length) kids.push(run(`\u3000（解説 ${k.ref.join('・')}）`, { size: 17, color: GRAY }));
-    children.push(new Paragraph({ children: kids, numbering: { reference: 'bullets', level: 0 }, keepLines: true, spacing: { after: 80, line: 300 } }));
-  }
+  children.push(new Paragraph({ children: [run(`${d.id}　${d.title}`, { bold: true, color: BLUE, size: 22 })], keepNext: true, spacing: { before: 200, after: 60 } }));
+  // 罫線なしの 2 列の表にして、解説の番号を右端にそろえる（要点が長くても番号の位置が崩れない）
+  const rows = kpDecks[d.id].map((k, n, all) => new TableRow({ cantSplit: true, children: [
+    new TableCell({ width: { size: KPW[0], type: WidthType.DXA }, borders: noBorders, margins: { top: 20, bottom: 20, left: 0, right: 80 },
+      children: [new Paragraph({ children: [run(k.text, { bold: true, size: 21 })], numbering: { reference: 'kpbullets', level: 0 }, keepNext: n < all.length - 1, spacing: { after: 0, line: 300 } })] }),
+    new TableCell({ width: { size: KPW[1], type: WidthType.DXA }, borders: noBorders, margins: { top: 20, bottom: 20, left: 0, right: 0 }, verticalAlign: VerticalAlign.BOTTOM,
+      children: [new Paragraph({ children: [run(Array.isArray(k.ref) ? k.ref.join('・') : '', { size: 17, color: GRAY })], alignment: AlignmentType.RIGHT, spacing: { after: 0, line: 300 } })] }),
+  ] }));
+  children.push(new Table({ width: { size: W, type: WidthType.DXA }, columnWidths: KPW, borders: { ...noBorders, insideHorizontal: noBorder, insideVertical: noBorder }, rows }));
 }
-if (kpAbbr.length) { children.push(sub('この一覧で使う略語')); children.push(abbrTable(kpAbbr)); }
+if (kpAbbr.length) { children.push(new Paragraph({ children: [run('この一覧で使う略語', { bold: true, color: BLUE, size: 22 })], keepNext: true, spacing: { before: 280, after: 80 } })); children.push(abbrTable(kpAbbr)); }
 children.push(new Paragraph({ children: [new PageBreak()] }));
 // この章について
 children.push(new Paragraph({ text: 'この章について', heading: HeadingLevel.HEADING_1 }));
@@ -96,6 +102,7 @@ data.decks.forEach((d, i) => {
 
 const numbering = { config: [
   { reference: 'bullets', levels: [{ level: 0, format: LevelFormat.BULLET, text: '•', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 480, hanging: 300 } } } }] },
+  { reference: 'kpbullets', levels: [{ level: 0, format: LevelFormat.BULLET, text: '•', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 300, hanging: 240 } } } }] },
   { reference: 'numbers', levels: [{ level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 480, hanging: 360 } } } }] },
 ] };
 
