@@ -8,8 +8,18 @@ const {
   AlignmentType, BorderStyle, ShadingType, LevelFormat, PageBreak, Header, Footer, PageNumber,
 } = require('docx');
 
-const [,, inName, outName] = process.argv;
+//   node build_points_docx.js <入力 points.json> <出力 docx> [keypoints.json]
+//   第 3 引数が無ければ、入力名の _points.json を _keypoints.json に置き換えたファイルを読む。
+const [,, inName, outName, kpArg] = process.argv;
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, inName), 'utf8'));
+const kpPath = kpArg ? path.resolve(process.cwd(), kpArg) : path.join(__dirname, inName.replace(/_points\.json$/, '_keypoints.json'));
+let kp;
+try { kp = JSON.parse(fs.readFileSync(kpPath, 'utf8')); }
+catch (e) { console.error(`要点ファイルを読めません：${kpPath}（${e.code === 'ENOENT' ? 'ファイルがありません' : e.message}）`); process.exit(1); }
+const kpDecks = (kp && kp.decks) || {};
+const kpMissing = data.decks.filter(d => !Array.isArray(kpDecks[d.id]) || !kpDecks[d.id].length).map(d => d.id);
+if (kpMissing.length) { console.error(`要点ファイル ${kpPath} に、次の講義の要点がありません：${kpMissing.join('、')}`); process.exit(1); }
+const kpAbbr = Array.isArray(kp.abbr) ? kp.abbr : [];
 const FONT = { ascii: 'Meiryo', eastAsia: 'Meiryo', hAnsi: 'Meiryo', cs: 'Meiryo' };
 const GOLD = 'BF9000', BLUE = '0072B2', DARK = '262626', GRAY = '595959', LIGHT = 'F2F2F2', BORDER = 'BFBFBF';
 const W = 9026; // A4 本文幅（DXA）: 11906 - 1440*2
@@ -31,6 +41,12 @@ function numbersTable(rows) {
   const body = rows.map(r => new TableRow({ children: [cell(r.item, COLW[0]), cell(r.value, COLW[1]), cell(r.source, COLW[2])] }));
   return new Table({ width: { size: W, type: WidthType.DXA }, columnWidths: COLW, rows: [head, ...body] });
 }
+function abbrTable(rows) {
+  const w = [1800, 4000, 3226];
+  const head = new TableRow({ tableHeader: true, children: [cell('略語', w[0], { head: true }), cell('正式な綴り', w[1], { head: true }), cell('日本語', w[2], { head: true })] });
+  const body = rows.map(r => new TableRow({ cantSplit: true, children: [cell(r.abbr || '', w[0]), cell(r.full || '', w[1]), cell(r.ja || '', w[2])] }));
+  return new Table({ width: { size: W, type: WidthType.DXA }, columnWidths: w, rows: [head, ...body] });
+}
 const sub = text => new Paragraph({ children: [run(text, { bold: true, color: BLUE, size: 22 })], spacing: { before: 160, after: 80 } });
 
 const children = [];
@@ -39,13 +55,24 @@ children.push(new Paragraph({ children: [run(data.chapter, { size: 44, bold: tru
 children.push(new Paragraph({ children: [run(data.subtitle, { size: 28, color: GRAY })], spacing: { after: 200 }, alignment: AlignmentType.CENTER }));
 children.push(new Paragraph({ children: [run('初期研修医向け麻酔講義（離島の一人麻酔科医による）', { size: 22, color: GRAY })], alignment: AlignmentType.CENTER, spacing: { after: 400 } }));
 children.push(new Paragraph({ children: [run(data.cover_note || '講義の番号・タイトル・数値は各講義のスライド（spec.md）と同じです。原典に到達できなかった箇所は【要確認】と記しています。', { size: 20, color: GRAY })], alignment: AlignmentType.CENTER }));
-if (data.decks.some(d => Array.isArray(d.summary) && d.summary.length)) children.push(new Paragraph({ children: [run('各講義の構成：ねらい → 要点（箇条書き） → 解説 → 覚える数値・基準 → 落とし穴 → 主な出典', { size: 20, color: GRAY })], alignment: AlignmentType.CENTER, spacing: { before: 200 } }));
+children.push(new Paragraph({ children: [run('構成：この章の要点（全講義ぶん）→ 各講義の解説（ねらい → 解説 → 覚える数値・基準 → 落とし穴 → 主な出典）', { size: 20, color: GRAY })], alignment: AlignmentType.CENTER, spacing: { before: 200 } }));
+children.push(new Paragraph({ children: [new PageBreak()] }));
+// この章の要点
+children.push(new Paragraph({ text: 'この章の要点', heading: HeadingLevel.HEADING_1 }));
+children.push(para('各講義で持ち帰る要点を、先にまとめて示します。かっこ内は、その要点を詳しく述べている解説の番号です。', { size: 19, color: GRAY }));
+for (const d of data.decks) {
+  children.push(new Paragraph({ children: [run(`${d.id}　${d.title}`, { bold: true, color: BLUE, size: 22 })], keepNext: true, spacing: { before: 160, after: 80 } }));
+  for (const k of kpDecks[d.id]) {
+    const kids = [run(k.text, { bold: true, size: 22 })];
+    if (Array.isArray(k.ref) && k.ref.length) kids.push(run(`\u3000（解説 ${k.ref.join('・')}）`, { size: 17, color: GRAY }));
+    children.push(new Paragraph({ children: kids, numbering: { reference: 'bullets', level: 0 }, keepLines: true, spacing: { after: 80, line: 300 } }));
+  }
+}
+if (kpAbbr.length) { children.push(sub('この一覧で使う略語')); children.push(abbrTable(kpAbbr)); }
 children.push(new Paragraph({ children: [new PageBreak()] }));
 // この章について
 children.push(new Paragraph({ text: 'この章について', heading: HeadingLevel.HEADING_1 }));
 children.push(para(data.intro, { after: 200 }));
-children.push(sub('講義の一覧'));
-for (const d of data.decks) children.push(bullet(`${d.id}　${d.title}`));
 children.push(new Paragraph({ children: [new PageBreak()] }));
 // 各講義
 data.decks.forEach((d, i) => {
@@ -53,8 +80,6 @@ data.decks.forEach((d, i) => {
   children.push(sub('ねらい'));
   children.push(para(d.purpose));
   if (Array.isArray(d.summary) && d.summary.length) {
-    children.push(sub('要点'));
-    d.summary.forEach(sm => children.push(new Paragraph({ children: [run(sm, { bold: true })], numbering: { reference: 'keypoints', level: 0, instance: i }, shading: { type: ShadingType.CLEAR, fill: 'F2F2F2', color: 'auto' }, spacing: { after: 60 } })));
     children.push(sub('解説'));
     d.points.forEach((p, k) => {
       children.push(new Paragraph({ children: [run(`${k + 1}. ${d.summary[k]}`, { bold: true, color: BLUE, size: 21 })], keepNext: true, spacing: { before: 160, after: 60 } }));
@@ -72,7 +97,6 @@ data.decks.forEach((d, i) => {
 const numbering = { config: [
   { reference: 'bullets', levels: [{ level: 0, format: LevelFormat.BULLET, text: '•', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 480, hanging: 300 } } } }] },
   { reference: 'numbers', levels: [{ level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 480, hanging: 360 } } } }] },
-  { reference: 'keypoints', levels: [{ level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 480, hanging: 360 } } } }] },
 ] };
 
 const doc = new Document({
@@ -92,4 +116,4 @@ const doc = new Document({
     children,
   }],
 });
-Packer.toBuffer(doc).then(buf => { const out = path.join(__dirname, outName); fs.writeFileSync(out, buf); console.log('wrote', out, buf.length, 'bytes'); });
+Packer.toBuffer(doc).then(buf => { const out = path.resolve(__dirname, outName); fs.writeFileSync(out, buf); console.log('wrote', out, buf.length, 'bytes'); });
